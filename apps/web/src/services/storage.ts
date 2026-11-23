@@ -1,14 +1,14 @@
 import type { AppState } from '../domain/types'
 import { seedState } from './seed'
 
-const KEY = 'fleffy-prd-ux-skill:v1'
+const KEY = 'fleffy-prd-ux-skill:v2'
 
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const s = JSON.parse(raw) as AppState
-      if (s?.version === 1 && Array.isArray(s.orders)) return s
+      if (s?.version === 2 && Array.isArray(s.transactions)) return s
     }
   } catch { /* penyimpanan tidak tersedia/rusak → data contoh */ }
   return seedState()

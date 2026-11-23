@@ -1,227 +1,243 @@
 import { useState } from 'react'
-import type { Order, Verifier } from '../domain/types'
+import type { HoldReason, Transaction, Verifier } from '../domain/types'
 import {
-  activeRequest, canForward, canRequest, currentDecision, fundsConfirmed, hasStaleResult, latestRequest, resultAdequate, verificationState,
+  activeEntries, canAdvance, canCancelEntry, canRequest, entriesToRequest, entryStatus, fullyConfirmed, isLunas, lastHold, latestRequest,
+  paidConfirmed, paidRecorded, pendingRequest, remaining, resultAdequate, verificationState,
 } from '../domain/rules'
-import { decideForward, decideHold, requestVerification } from '../domain/actions'
+import { addPayment, advanceStage, cancelPayment, holdTransaction, requestVerification } from '../domain/actions'
 import { useStore } from '../store/StoreContext'
 import type { Route } from '../hooks/useRoute'
+import { validatePayment, type PaymentDraft } from '../utils/validation'
 import { AppShell, PageHeader } from '../components/layout/AppShell'
-import { Accordion, Button, Field, InfoBox, KeyValue, LinkButton, SampleTag, fieldAria } from '../components/common'
-import { PaymentChip, VerificationChip } from '../components/orders/StatusChips'
+import { Accordion, BottomSheet, Button, Field, InfoBox, KeyValue, LinkButton, SampleTag, fieldAria } from '../components/common'
+import { EntryChip, PayChip, StageChip, VerificationChip } from '../components/orders/StatusChips'
 import { HoldSheet } from '../components/orders/HoldSheet'
-import { ResultForm, CHECK_ITEMS } from '../components/verification/ResultForm'
-import { CONCLUSION_LABEL, HOLD_REASON_LABEL, ROLE_LABEL, VERIFIER_LABEL, dateTime, methodLabel, rupiah } from '../utils/format'
+import { AddPaymentSheet } from '../components/orders/PaymentFields'
+import { CHECK_ITEMS, EntryList, ResultForm } from '../components/verification/ResultForm'
+import { CONCLUSION_LABEL, HOLD_REASON_LABEL, METHOD_LABEL, ROLE_LABEL, STAGE_LABEL, VERIFIER_LABEL, dateTime, rupiah } from '../utils/format'
 
-type SectionKey = 'ringkasan' | 'pembayaran' | 'pemeriksaan' | 'tindak'
-type Banner = null | 'forwarded' | 'held' | 'request_failed' | 'decision_failed'
+type SectionKey = 'ringkasan' | 'pembayaran' | 'pemeriksaan' | 'pengerjaan'
+type Banner = null | { tone: 'success' | 'warning' | 'danger'; title: string; text: string; retry?: string }
 
-/** Bagian default terbuka mengikuti keadaan (UX-SPEC N1b). */
-function defaultOpen(o: Order): Record<SectionKey, boolean> {
-  const st = verificationState(o)
-  const decided = !!currentDecision(o)
-  const base = { ringkasan: false, pembayaran: false, pemeriksaan: false, tindak: true }
-  if (decided && currentDecision(o)!.type === 'teruskan') return base
-  if (st === 'belum_diminta' || st === 'tidak_perlu') return { ...base, pembayaran: true, pemeriksaan: st === 'belum_diminta' }
-  return { ...base, pemeriksaan: true }
+const NEXT_LABEL: Record<string, string> = { diproses: 'Teruskan ke teknisi', finishing: 'Lanjut ke Finishing', qc: 'Lanjut ke Quality Control', selesai: 'Tandai Selesai' }
+
+/** Bagian default terbuka mengikuti keadaan (UX-SPEC N1b / §7.5). */
+function defaultOpen(t: Transaction): Record<SectionKey, boolean> {
+  const st = verificationState(t)
+  if (t.stage !== 'antrian') return { ringkasan: false, pembayaran: true, pemeriksaan: false, pengerjaan: true }
+  return { ringkasan: false, pembayaran: true, pemeriksaan: st !== 'tidak_perlu', pengerjaan: true }
 }
 
-export function OrderDetail({ order: o, route }: { order?: Order; route: Route }) {
+function ProgressBar({ t }: { t: Transaction }) {
+  const pct = (n: number) => `${Math.min(100, Math.round((n / t.bill) * 100))}%`
+  return (
+    <div className="progress" role="img" aria-label={`Dibayar ${rupiah(paidRecorded(t))}, dikonfirmasi ${rupiah(paidConfirmed(t))}, dari ${rupiah(t.bill)}`}>
+      <span className="progress-recorded" style={{ width: pct(paidRecorded(t)) }} />
+      <span className="progress-confirmed" style={{ width: pct(paidConfirmed(t)) }} />
+    </div>
+  )
+}
+
+export function OrderDetail({ tx: t, route }: { tx?: Transaction; route: Route }) {
   const { state, sections, setSection, commit, toast, reload } = useStore()
-  const from = route.query.get('from') ?? '/pesanan'
+  const from = route.query.get('from') ?? '/transaksi'
   const fromQueue = from.startsWith('/pemeriksaan')
   const [banner, setBanner] = useState<Banner>(null)
-  const [holding, setHolding] = useState(false)
-  const [busy, setBusy] = useState<null | 'request' | 'forward'>(null)
+  const [sheet, setSheet] = useState<null | 'hold' | 'pay' | { cancel: string }>(null)
+  const [busy, setBusy] = useState<null | 'request' | 'advance'>(null)
   const [verifier, setVerifier] = useState<Verifier>('owner')
   const [reqNote, setReqNote] = useState('')
 
-  if (!o) {
+  if (!t) {
     return (
-      <AppShell nav="pesanan" header={{ kind: 'detail', fallback: '/pesanan' }}>
-        <PageHeader title="Detail pesanan" />
-        <InfoBox title="Pesanan tidak ditemukan.">Periksa tautan atau cari pesanan dari daftar.</InfoBox>
-        <LinkButton href="#/pesanan" variant="primary">Kembali ke Pesanan</LinkButton>
+      <AppShell nav="transaksi" header={{ kind: 'detail', fallback: '/transaksi' }}>
+        <PageHeader title="Detail transaksi" />
+        <InfoBox title="Transaksi tidak ditemukan.">Periksa tautan atau cari transaksi dari daftar.</InfoBox>
+        <LinkButton href="#/transaksi" variant="primary">Kembali ke Transaksi</LinkButton>
       </AppShell>
     )
   }
 
   const role = state.role
-  const defaults = defaultOpen(o)
-  const isOpen = (k: SectionKey) => sections[o.id]?.[k] ?? (k === 'pemeriksaan' && fromQueue ? true : defaults[k])
-  const toggle = (k: SectionKey) => setSection(o.id, k, !isOpen(k))
-  const helpCtx = `?pesanan=${o.id}`
+  const defaults = defaultOpen(t)
+  const isOpen = (k: SectionKey) => sections[t.id]?.[k] ?? (k === 'pemeriksaan' && fromQueue ? true : defaults[k])
+  const toggle = (k: SectionKey) => setSection(t.id, k, !isOpen(k))
+  const helpCtx = `?transaksi=${t.id}`
+  const st = verificationState(t)
+  const pending = pendingRequest(t)
+  const last = latestRequest(t)
+  const reqAllowed = canRequest(t, role)
+  const adv = canAdvance(t, role)
+  const hold = lastHold(t)
+  const entries = activeEntries(t)
+  const cancelled = t.payments.filter((p) => p.cancelled)
+  const contact = state.contacts.find((c) => c.verifier === pending?.verifier)
 
-  const r = activeRequest(o)
-  const last = latestRequest(o)
-  const st = verificationState(o)
-  const adequate = resultAdequate(o)
-  const decision = currentDecision(o)
-  const reqAllowed = canRequest(o, role)
-  const fwd = canForward(o, role)
+  const fail = (kind: 'rule' | 'storage', message: string, what: string) => {
+    if (kind === 'storage') setBanner({ tone: 'danger', title: `${what} belum terkonfirmasi`, text: 'Data tetap tersedia. Periksa catatan sebelum mencoba lagi.', retry: 'Periksa catatan' })
+    else toast('danger', message)
+  }
 
   const sendRequest = () => {
     setBusy('request')
-    let newId = ''
-    const res = commit((s) => {
-      const next = requestVerification(s, o.id, verifier, reqNote)
-      newId = activeRequest(next.orders.find((x) => x.id === o.id)!)!.id
-      return next
-    })
+    let id = ''
+    const res = commit((s) => { const n = requestVerification(s, t.id, verifier, reqNote); id = pendingRequest(n.transactions.find((x) => x.id === t.id)!)!.id; return n })
     setBusy(null)
-    if (res.ok) { setReqNote(''); setBanner(null); toast('success', `Permintaan ${newId} tercatat untuk ${VERIFIER_LABEL[verifier]}.`) }
-    else if (res.kind === 'storage') setBanner('request_failed')
-    else toast('danger', res.message)
+    if (res.ok) { setReqNote(''); setBanner(null); toast('success', `Permintaan ${id} tercatat untuk ${VERIFIER_LABEL[verifier]}.`) }
+    else fail(res.kind, res.message, 'Pengiriman')
   }
 
-  const forward = () => {
-    setBusy('forward')
-    const res = commit((s) => decideForward(s, o.id))
+  const advance = () => {
+    setBusy('advance')
+    const to = adv.to!
+    const res = commit((s) => advanceStage(s, t.id))
     setBusy(null)
-    if (res.ok) { setBanner('forwarded'); setSection(o.id, 'tindak', true); window.scrollTo(0, 0) }
-    else if (res.kind === 'storage') setBanner('decision_failed')
-    else toast('danger', res.message)
+    if (res.ok) {
+      setBanner({ tone: 'success', title: 'Status diperbarui', text: `${t.invoice} kini ${STAGE_LABEL[to]}.${to === 'diproses' ? ' Pesanan siap dikerjakan teknisi.' : to === 'selesai' ? ' Sepatu siap diserahkan; dana sudah dipastikan.' : ''}` })
+      window.scrollTo(0, 0)
+    } else fail(res.kind, res.message, 'Perubahan status')
   }
 
-  const hold = (reason: Parameters<typeof decideHold>[2], note: string): string | null => {
-    const res = commit((s) => decideHold(s, o.id, reason, note))
-    if (res.ok) { setHolding(false); setBanner('held'); window.scrollTo(0, 0); return null }
-    if (res.kind === 'storage') { setHolding(false); setBanner('decision_failed'); return null }
+  const submitHold = (reason: HoldReason, note: string): string | null => {
+    const res = commit((s) => holdTransaction(s, t.id, reason, note))
+    if (res.ok) { setSheet(null); setBanner({ tone: 'warning', title: 'Keputusan tahan tersimpan', text: `${t.invoice} menunggu klarifikasi. Pesanan belum siap diteruskan.` }); window.scrollTo(0, 0); return null }
+    if (res.kind === 'storage') { setSheet(null); fail('storage', '', 'Keputusan'); return null }
     return res.message
   }
 
-  const contact = state.contacts.find((c) => c.verifier === r?.verifier)
+  const submitPayment = (p: PaymentDraft) => {
+    const errs = validatePayment(p, remaining(t))
+    if (Object.keys(errs).length) return errs
+    let id = ''
+    const res = commit((s) => { const n = addPayment(s, t.id, p); const x = n.transactions.find((y) => y.id === t.id)!; id = x.payments[x.payments.length - 1].id; return n })
+    if (!res.ok) return res.kind === 'storage' ? 'Pembayaran belum tersimpan. Coba kembali.' : res.message
+    setSheet(null)
+    toast('success', `Pembayaran ${id} tercatat.`)
+    return null
+  }
 
   return (
-    <AppShell nav="pesanan" header={{ kind: 'detail', fallback: from, helpHref: `#/bantuan${helpCtx}` }}>
-      <PageHeader title="Detail pesanan" identity={<>{o.code} · {methodLabel(o.method)} · {rupiah(o.amount)} {o.sample && <SampleTag />}</>} />
+    <AppShell nav="transaksi" header={{ kind: 'detail', fallback: from, helpHref: `#/bantuan${helpCtx}` }}>
+      <PageHeader title="Detail transaksi" identity={<>{t.invoice} · {t.customerCode} {t.customerName} · {rupiah(t.bill)} {t.sample && <SampleTag />}</>} />
+      <div className="chip-row"><StageChip stage={t.stage} /><PayChip t={t} /><VerificationChip t={t} /></div>
 
-      {/* Banner status (UX-SPEC N1b) */}
-      {banner === 'forwarded' && <InfoBox tone="success" role="status" title="Keputusan lanjut tersimpan">Pesanan siap diteruskan ke teknisi.</InfoBox>}
-      {banner === 'held' && decision?.type === 'tahan' && (
-        <InfoBox tone="warning" role="status" title="Keputusan tahan tersimpan">{o.code} menunggu klarifikasi. Pesanan belum siap diteruskan.</InfoBox>
-      )}
-      {banner === 'request_failed' && (
-        <InfoBox tone="danger" role="alert" title="Pengiriman belum terkonfirmasi">
-          Data pesanan dan catatan tetap tersedia. Jangan mengirim ulang sebelum memeriksa permintaan.
-          <div className="mt-8"><Button variant="secondary" size="sm" onClick={() => { reload(); setBanner(null) }}>Periksa permintaan</Button></div>
-        </InfoBox>
-      )}
-      {banner === 'decision_failed' && (
-        <InfoBox tone="danger" role="alert" title="Keputusan belum terkonfirmasi">
-          Periksa catatan untuk mengetahui apakah keputusan sudah tersimpan.
-          <div className="mt-8"><Button variant="secondary" size="sm" onClick={() => { reload(); setBanner(null) }}>Periksa catatan keputusan</Button></div>
-        </InfoBox>
-      )}
-      {hasStaleResult(o) && !r && (
-        <InfoBox tone="warning" title="Hasil sebelumnya perlu diperbarui">
-          {last!.result ? `${last!.result.id}` : last!.id} dibuat untuk data sebelumnya. Jangan gunakan hasil tersebut sebagai dasar keputusan terbaru.
+      {banner && (
+        <InfoBox tone={banner.tone} role={banner.tone === 'danger' ? 'alert' : 'status'} title={banner.title}>
+          {banner.text}
+          {banner.retry && <div className="mt-8"><Button variant="secondary" size="sm" onClick={() => { reload(); setBanner(null) }}>{banner.retry}</Button></div>}
         </InfoBox>
       )}
 
-      {/* 1. Ringkasan pesanan */}
-      <Accordion title="Ringkasan pesanan" open={isOpen('ringkasan')} onToggle={() => toggle('ringkasan')}>
+      {/* 1. Ringkasan */}
+      <Accordion title="Ringkasan transaksi" open={isOpen('ringkasan')} onToggle={() => toggle('ringkasan')}>
         <KeyValue rows={[
-          ['ID pesanan', o.code], ['Pelanggan', o.customerName], ['WhatsApp', o.whatsapp || '—'],
-          ['Layanan', `${o.service} · ${o.pairs} pasang`], ['Metode', methodLabel(o.method)],
-          ['Tagihan', <span className="num">{rupiah(o.amount)}</span>], ['Dibuat', dateTime(o.createdAt)],
-          ...(o.note ? [['Catatan', o.note] as [string, string]] : []),
+          ['Nota', t.invoice], ['Pelanggan', `${t.customerCode} · ${t.customerName}`], ['HP', t.phone || '—'],
+          ['Layanan', `${t.service} · ${t.pairs} pasang`], ['Tagihan', <span className="num" key="b">{rupiah(t.bill)}</span>],
+          ['Status pengerjaan', STAGE_LABEL[t.stage]], ['Dibuat', dateTime(t.createdAt)],
+          ...(t.note ? [['Catatan', t.note] as [string, string]] : []),
         ]} />
-        <p className="caption text-secondary">Gunakan identitas pesanan dan bukti untuk mencocokkan pembayaran; nominal saja tidak cukup.</p>
-        {role === 'admin' && <LinkButton href={`#/pesanan/${o.id}/ubah`}>Ubah pesanan</LinkButton>}
+        <p className="caption text-secondary">Gunakan nomor nota dan bukti untuk mencocokkan pembayaran; nominal saja tidak cukup.</p>
+        {role === 'admin' && <LinkButton href={`#/transaksi/${t.id}/ubah`}>Ubah transaksi</LinkButton>}
       </Accordion>
 
-      {/* 2. Pembayaran — FR-01 */}
+      {/* 2. Pembayaran — UX-SPEC §7.2 */}
       <Accordion title="Pembayaran" open={isOpen('pembayaran')} onToggle={() => toggle('pembayaran')}>
-        <PaymentChip o={o} />
-        {o.method === 'tunai' ? <p>Pembayaran tunai tercatat oleh kasir.</p>
-          : fundsConfirmed(o) ? <p>Menurut hasil {VERIFIER_LABEL[r!.result!.by as Verifier]} {r!.result!.id} untuk data terbaru.</p>
-            : <p className="text-secondary">Pencatatan belum memastikan dana masuk.</p>}
-        {o.method === 'transfer' && (o.proof
-          ? <>
-            <KeyValue rows={[['Bukti', o.proof.id], ['Nominal bukti', <span className="num">{rupiah(o.proof.amount)}</span>], ['Waktu transfer', dateTime(o.proof.transferAt)]]} />
-            {o.proof.amount !== o.amount && <InfoBox tone="warning" title="Nominal pada bukti berbeda dari tagihan." />}
-            <a className="label" href={`#/pesanan/${o.id}/bukti`}>Lihat bukti {o.proof.id}</a>
-          </>
-          : <p className="text-secondary">Belum ada bukti transfer.</p>)}
+        <div className="row-between"><PayChip t={t} /><span className="label num">{rupiah(t.bill)}</span></div>
+        <ProgressBar t={t} />
+        <KeyValue rows={[
+          ['Dibayar (tercatat kasir)', <span className="num" key="r">{rupiah(paidRecorded(t))} dari {rupiah(t.bill)}</span>],
+          ['Dana dikonfirmasi', <span className="num" key="c">{rupiah(paidConfirmed(t))} dari {rupiah(t.bill)}</span>],
+          ...(remaining(t) > 0 ? [['Sisa tagihan', <span className="num" key="s">{rupiah(remaining(t))}</span>] as [string, React.ReactNode]] : []),
+        ]} />
+        {isLunas(t) && !fullyConfirmed(t) && <InfoBox tone="warning" title="LUNAS di catatan, tetapi dana belum seluruhnya dipastikan.">Status LUNAS dihitung dari nominal yang diketik kasir. Pastikan pembayaran non-tunai sudah diperiksa.</InfoBox>}
+        <p className="label">Pembayaran diterima (tercatat)</p>
+        {entries.length === 0 ? <p className="text-secondary">Belum ada pembayaran tercatat.</p> : (
+          <ul className="entry-list">
+            {entries.map((p) => {
+              const es = entryStatus(t, p)
+              const c = canCancelEntry(t, p, role)
+              return (
+                <li key={p.id} className="entry">
+                  <div className="row-between"><span className="label">{METHOD_LABEL[p.method]} · <span className="num">{rupiah(p.amount)}</span></span><EntryChip status={es} /></div>
+                  <span className="caption text-secondary">{p.id} · dicatat {dateTime(p.at)}{p.proof && <> · {p.proof.sender} · transfer {dateTime(p.proof.transferAt)}</>}</span>
+                  <div className="entry-actions">
+                    {p.proof && <a className="caption" href={`#/transaksi/${t.id}/bukti/${p.id}`}>Lihat bukti {p.id}</a>}
+                    {c.ok && <button className="btn-link caption" onClick={() => setSheet({ cancel: p.id })}>Batalkan entri</button>}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {cancelled.length > 0 && <p className="caption text-secondary">{cancelled.length} entri dibatalkan: {cancelled.map((p) => p.id).join(', ')}.</p>}
+        {role === 'admin' && remaining(t) > 0 && t.stage !== 'selesai' && <Button variant="secondary" onClick={() => setSheet('pay')}>+ Tambah pembayaran</Button>}
       </Accordion>
 
-      {/* 3. Pemeriksaan — FR-03/FR-06/US-07 */}
+      {/* 3. Pemeriksaan — UX-SPEC §7.3 */}
       <Accordion title="Pemeriksaan" open={isOpen('pemeriksaan')} onToggle={() => toggle('pemeriksaan')}>
-        <VerificationChip o={o} />
-        {st === 'tidak_perlu' && <p>Pembayaran tunai tidak memerlukan pemeriksaan transfer.</p>}
+        <VerificationChip t={t} />
+        {st === 'tidak_perlu' && <p>{entries.length ? 'Semua pembayaran tunai; tidak memerlukan pemeriksaan transfer.' : 'Belum ada pembayaran non-tunai untuk diperiksa.'}</p>}
 
-        {st === 'belum_diminta' && role === 'admin' && (
+        {pending && (
           <>
+            <KeyValue rows={[['Permintaan', pending.id], ['Pemeriksa', `${VERIFIER_LABEL[pending.verifier]}${contact ? ` — ${contact.name}` : ''}`], ['Dikirim', dateTime(pending.requestedAt)]]} />
+            <EntryList r={pending} />
+            {pending.note && <p className="caption text-secondary">Catatan: {pending.note}</p>}
+            {role === 'admin' ? <>
+              <p>Permintaan tercatat. Hasil belum tersedia.</p>
+              <a className="label" href={`#/bantuan/menunggu${helpCtx}`}>Panduan saat menunggu</a>
+              <a className="label" href={`#/bantuan/kontak${helpCtx}`}>Kontak pemeriksa</a>
+            </> : <ResultForm t={t} r={pending} />}
+          </>
+        )}
+
+        {!pending && last?.result && (
+          <>
+            <p className="label">Hasil terakhir</p>
+            <KeyValue rows={[
+              ['Sumber berwenang', `${ROLE_LABEL[last.result.by]} — ${last.result.byName}`],
+              ['Hasil / permintaan', `${last.result.id} / ${last.id}`], ['Dicatat', dateTime(last.result.at)],
+            ]} />
+            <EntryList r={last} />
+            <ul className="checklist">
+              {CHECK_ITEMS.map((c) => (
+                <li key={c.key}>
+                  <span className={last.result!.checklist[c.key] ? 'ok' : 'no'} aria-hidden>{last.result!.checklist[c.key] ? '✓' : '✗'}</span>
+                  <span>{c.label(last)}<span className="visually-hidden">{last.result!.checklist[c.key] ? ' — cocok' : ' — belum cocok'}</span></span>
+                </li>
+              ))}
+            </ul>
+            {last.result.note && <p className="caption text-secondary">Catatan pemeriksa: {last.result.note}</p>}
+            <p className="label">{resultAdequate(last) ? `Kesimpulan: Sesuai — entri di atas dikonfirmasi.` : `Kesimpulan: ${CONCLUSION_LABEL[last.result.conclusion]} — penerimaan belum dapat dipastikan.`}</p>
+          </>
+        )}
+
+        {role === 'admin' && reqAllowed.ok && (
+          <div className="stack sub-block">
+            <p className="label">{t.requests.length ? 'Minta pemeriksaan untuk entri berikut' : 'Minta pemeriksaan'}</p>
+            <ul className="checklist">{entriesToRequest(t).map((p) => <li key={p.id}><span aria-hidden>•</span><span>{p.id} · {METHOD_LABEL[p.method]} <span className="num">{rupiah(p.amount)}</span> · {p.proof?.sender}</span></li>)}</ul>
             <div className="field">
-              <label htmlFor="verifier" className="row-between"><span className="text-secondary">Tujuan pemeriksa</span></label>
+              <label htmlFor="verifier" className="text-secondary">Tujuan pemeriksa</label>
               <select {...fieldAria('verifier')} value={verifier} onChange={(e) => setVerifier(e.target.value as Verifier)}>
                 {state.contacts.map((c) => <option key={c.verifier} value={c.verifier}>{VERIFIER_LABEL[c.verifier]} — {c.name}</option>)}
               </select>
             </div>
-            <p className="text-secondary">Identitas, nominal dan bukti mengikuti pesanan ini: <span className="num">{o.code} · {rupiah(o.amount)}{o.proof ? ` · ${o.proof.id}` : ''}</span></p>
-            {!o.proof && <InfoBox tone="warning" title="Belum ada bukti transfer">Pemeriksa hanya dapat mencocokkan nominal. Tambahkan bukti melalui Ubah pesanan bila tersedia.</InfoBox>}
+            <p className="caption text-secondary">Nota, pelanggan, nominal dan bukti dipakai otomatis dari transaksi ini.</p>
             <Field id="req-note" label="Catatan tambahan (opsional)">
-              <textarea {...fieldAria('req-note')} value={reqNote} maxLength={300} onChange={(e) => setReqNote(e.target.value)} placeholder="Catatan tambahan (opsional)" />
+              <textarea {...fieldAria('req-note')} value={reqNote} maxLength={300} onChange={(e) => setReqNote(e.target.value)} />
             </Field>
-            <Button loading={busy === 'request'} onClick={sendRequest}>Minta pemeriksaan</Button>
-          </>
-        )}
-        {st === 'belum_diminta' && role !== 'admin' && <p className="text-secondary">Belum ada permintaan pemeriksaan untuk data terbaru.</p>}
-
-        {st === 'menunggu' && r && (
-          <>
-            <KeyValue rows={[['Permintaan', r.id], ['Pemeriksa', `${VERIFIER_LABEL[r.verifier]}${contact ? ` — ${contact.name}` : ''}`], ['Dikirim', dateTime(r.requestedAt)]]} />
-            {r.note && <p className="caption text-secondary">Catatan: {r.note}</p>}
-            {role === 'admin' && <>
-              <p>Permintaan tercatat. Hasil belum tersedia.</p>
-              <a className="label" href={`#/bantuan/menunggu${helpCtx}`}>Panduan saat menunggu</a>
-              <a className="label" href={`#/bantuan/kontak${helpCtx}`}>Kontak pemeriksa</a>
-            </>}
-            {role !== 'admin' && <ResultForm o={o} r={r} />}
-          </>
+            <Button loading={busy === 'request'} onClick={sendRequest}>{t.requests.length ? 'Minta pemeriksaan' : 'Minta pemeriksaan'}</Button>
+          </div>
         )}
 
-        {st === 'hasil_tersedia' && r?.result && (
-          <>
-            <KeyValue rows={[
-              ['Sumber berwenang', `${ROLE_LABEL[r.result.by]} — ${r.result.byName}`],
-              ['Hasil / permintaan', `${r.result.id} / ${r.id}`],
-              ['Dicatat', dateTime(r.result.at)],
-            ]} />
-            <p className="label">Untuk {o.code} · {adequate ? 'data terbaru' : CONCLUSION_LABEL[r.result.conclusion]}</p>
-            <ul className="checklist">
-              {CHECK_ITEMS.map((c) => (
-                <li key={c.key}>
-                  <span className={r.result!.checklist[c.key] ? 'ok' : 'no'} aria-hidden>{r.result!.checklist[c.key] ? '✓' : '✗'}</span>
-                  <span>{c.label(r)}<span className="visually-hidden">{r.result!.checklist[c.key] ? ' — cocok' : ' — belum cocok'}</span></span>
-                </li>
-              ))}
-            </ul>
-            {r.result.note && <p className="caption text-secondary">Catatan pemeriksa: {r.result.note}</p>}
-            {!adequate && <p>Penerimaan untuk pesanan ini belum dapat dipastikan.</p>}
-            {!adequate && role === 'admin' && reqAllowed.ok && (
-              <>
-                <div className="field">
-                  <label htmlFor="verifier2" className="text-secondary">Tujuan pemeriksa</label>
-                  <select {...fieldAria('verifier2')} value={verifier} onChange={(e) => setVerifier(e.target.value as Verifier)}>
-                    {state.contacts.map((c) => <option key={c.verifier} value={c.verifier}>{VERIFIER_LABEL[c.verifier]} — {c.name}</option>)}
-                  </select>
-                </div>
-                <Button variant="secondary" loading={busy === 'request'} onClick={sendRequest}>Minta pemeriksaan ulang</Button>
-              </>
-            )}
-          </>
-        )}
-
-        {o.requests.length > 1 && (
+        {t.requests.length > 1 && (
           <details>
-            <summary className="caption text-secondary">Riwayat permintaan ({o.requests.length})</summary>
+            <summary className="caption text-secondary">Riwayat permintaan ({t.requests.length})</summary>
             <ul className="timeline mt-8">
-              {o.requests.map((x) => (
+              {t.requests.map((x) => (
                 <li key={x.id} className="caption">
-                  <span>{x.id} → {VERIFIER_LABEL[x.verifier]} · {dateTime(x.requestedAt)} · {rupiah(x.snapshot.amount)}</span>
-                  <span className="text-secondary">{x.result ? `${x.result.id}: ${CONCLUSION_LABEL[x.result.conclusion]}` : 'tanpa hasil'}{x.stale ? ' · tidak berlaku' : ''}</span>
+                  <span>{x.id} → {VERIFIER_LABEL[x.verifier]} · {dateTime(x.requestedAt)} · {x.entries.map((e) => e.id).join(', ')}</span>
+                  <span className="text-secondary">{x.result ? `${x.result.id}: ${CONCLUSION_LABEL[x.result.conclusion]}` : 'menunggu'}</span>
                 </li>
               ))}
             </ul>
@@ -229,46 +245,46 @@ export function OrderDetail({ order: o, route }: { order?: Order; route: Route }
         )}
       </Accordion>
 
-      {/* 4. Tindak lanjut — FR-05 */}
-      <Accordion title="Tindak lanjut" open={isOpen('tindak')} onToggle={() => toggle('tindak')}>
-        {decision ? (
+      {/* 4. Status pengerjaan — UX-SPEC §7.4 */}
+      <Accordion title="Status pengerjaan" open={isOpen('pengerjaan')} onToggle={() => toggle('pengerjaan')}>
+        <ol className="stages" aria-label="Tahap pengerjaan">
+          {(['antrian', 'diproses', 'finishing', 'qc', 'selesai'] as const).map((s) => (
+            <li key={s} className={s === t.stage ? 'current' : ''} aria-current={s === t.stage ? 'step' : undefined}>{STAGE_LABEL[s]}</li>
+          ))}
+        </ol>
+        {hold && (
+          <InfoBox tone="warning" title="Ditahan untuk klarifikasi">
+            {HOLD_REASON_LABEL[hold.reason!]}{hold.note && ` — ${hold.note}`} · {hold.by} · {dateTime(hold.at)}{hold.basis && ` · dasar ${hold.basis}`}
+          </InfoBox>
+        )}
+        {role === 'admin' && adv.to && (
           <>
-            <KeyValue rows={[
-              ['Keputusan', decision.type === 'teruskan' ? 'Teruskan' : 'Tahan'],
-              ['Dasar', decision.resultId ?? (o.method === 'tunai' ? 'Pembayaran tunai' : '—')],
-              ...(decision.reason ? [['Alasan', HOLD_REASON_LABEL[decision.reason]] as [string, string]] : []),
-              ['Petugas', decision.by], ['Waktu', dateTime(decision.at)],
-            ]} />
-            {decision.note && <p className="caption text-secondary">Catatan: {decision.note}</p>}
-            {decision.type === 'teruskan'
-              ? <p className="caption text-secondary">Status ini mencatat keputusan. Pesanan belum dinyatakan selesai dikerjakan.</p>
-              : role === 'admin' && <LinkButton href={`#/bantuan/kontak${helpCtx}`}>Kontak pemeriksa</LinkButton>}
-            <LinkButton href={`#/pesanan/${o.id}/keputusan`}>Lihat catatan keputusan</LinkButton>
-          </>
-        ) : null}
-
-        {decision?.type !== 'teruskan' && role === 'admin' && (
-          <>
-            {fwd.ok && o.method === 'transfer' && <p className="label">Dasar keputusan: {r?.result?.id}</p>}
-            {fwd.ok
-              ? <Button loading={busy === 'forward'} onClick={forward}>Simpan keputusan Teruskan</Button>
-              : <>
-                <Button disabled aria-describedby="fwd-reason">Teruskan</Button>
-                <p id="fwd-reason" className="caption text-secondary">{fwd.reason}</p>
-              </>}
-            {o.method === 'transfer' && (st === 'hasil_tersedia' || st === 'menunggu') && decision?.type !== 'tahan' && (
-              <Button variant="secondary" onClick={() => setHolding(true)}>Tahan untuk klarifikasi</Button>
-            )}
+            {t.stage === 'antrian' && adv.ok && last?.result && <p className="label">Dasar keputusan: {last.result.id}</p>}
+            {adv.ok
+              ? <Button loading={busy === 'advance'} onClick={advance}>{NEXT_LABEL[adv.to]}</Button>
+              : <><Button disabled aria-describedby="adv-reason">{NEXT_LABEL[adv.to]}</Button><p id="adv-reason" className="caption text-secondary">{adv.reason}</p></>}
+            {t.stage === 'antrian' && !adv.ok && entries.length > 0 && <Button variant="secondary" onClick={() => setSheet('hold')}>Tahan untuk klarifikasi</Button>}
           </>
         )}
-        {role !== 'admin' && !decision && <p className="text-secondary">Keputusan dicatat oleh Admin.</p>}
+        {t.stage === 'selesai' && <p className="text-secondary">Transaksi selesai. Dana dikonfirmasi {rupiah(paidConfirmed(t))}.</p>}
+        {role !== 'admin' && <p className="text-secondary">Status pengerjaan diubah oleh Admin.</p>}
+        <LinkButton href={`#/transaksi/${t.id}/riwayat`}>Riwayat transaksi ({t.history.length})</LinkButton>
       </Accordion>
 
-      {holding && (
-        <HoldSheet o={o} onClose={() => setHolding(false)} onSubmit={hold}
-          defaultReason={st === 'menunggu' ? 'hasil_belum_tersedia' : st === 'hasil_tersedia' && !adequate ? 'hasil_belum_memadai' : undefined} />
+      {sheet === 'hold' && <HoldSheet o={t} onClose={() => setSheet(null)} onSubmit={submitHold}
+        defaultReason={st === 'menunggu' ? 'hasil_belum_tersedia' : st === 'hasil_tersedia' ? 'hasil_belum_memadai' : undefined} />}
+      {sheet === 'pay' && <AddPaymentSheet invoice={t.invoice} max={remaining(t)} onClose={() => setSheet(null)} onSubmit={submitPayment} />}
+      {sheet && typeof sheet === 'object' && (
+        <BottomSheet title={`Batalkan ${sheet.cancel}?`} onClose={() => setSheet(null)}>
+          <p className="text-secondary">Entri dikeluarkan dari perhitungan pembayaran dan dicatat di riwayat. Tindakan ini tidak dapat dibatalkan.</p>
+          <Button onClick={() => {
+            const res = commit((s) => cancelPayment(s, t.id, sheet.cancel))
+            setSheet(null)
+            if (res.ok) toast('success', `Pembayaran ${sheet.cancel} dibatalkan.`); else fail(res.kind, res.message, 'Pembatalan')
+          }}>Batalkan entri</Button>
+          <Button variant="secondary" onClick={() => setSheet(null)}>Kembali</Button>
+        </BottomSheet>
       )}
-      <a className="label" href={`#/pesanan/${o.id}/keputusan`}>Riwayat pesanan ({o.history.length} catatan)</a>
     </AppShell>
   )
 }

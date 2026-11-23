@@ -1,75 +1,74 @@
-import type { AppState, Order } from '../domain/types'
-import { orderCode, proofId, requestId, resultId } from '../domain/ids'
+import type { AppState, PaymentEntry, Transaction, VerificationRequest } from '../domain/types'
+import { customerCode, invoiceNo, paymentId, requestId, resultId } from '../domain/ids'
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
 const ALL = { identity: true, amount: true, time: true, received: true }
+const ADMIN = 'Ari · Admin'
 
-/** Data contoh fiktif (ditandai `sample`) — mengikuti skenario wireframe Worksheet 12. */
+/** Data contoh fiktif (ditandai `sample`) mengikuti skenario wireframe & aplikasi Fleffy. */
 export function seedState(): AppState {
-  const mk = (seq: number, o: Partial<Order>): Order => ({
-    id: `seed-${seq}`, code: orderCode(seq), seq, customerName: '', whatsapp: '', service: 'Deep Cleaning', pairs: 2, amount: 150000,
-    method: 'transfer', note: '', createdAt: ago(400 - seq * 10), updatedAt: ago(400 - seq * 10), requests: [], decisions: [],
-    history: [{ at: ago(400 - seq * 10), actor: 'Ari · Admin', text: `Pesanan ${orderCode(seq)} dibuat. Pembayaran Bank Transfer tercatat.` }],
+  const d = new Date()
+  const mk = (seq: number, name: string, o: Partial<Transaction>): Transaction => ({
+    id: `seed-${seq}`, seq, invoice: invoiceNo(seq, d), customerCode: customerCode(seq), customerName: name, phone: `0812345000${seq}`,
+    service: 'Deep Clean', pairs: 2, bill: 150000, note: '', stage: 'antrian', createdAt: ago(400 - seq * 10), updatedAt: ago(400 - seq * 10),
+    payments: [], requests: [], changes: [], history: [{ at: ago(400 - seq * 10), actor: ADMIN, text: `Transaksi ${invoiceNo(seq, d)} dibuat. Status Antrian.` }],
     sample: true, ...o,
   })
-  const snap = (seq: number, name: string, amount: number, at: string) => ({
-    orderCode: orderCode(seq), customerName: name, amount, method: 'transfer' as const, proofId: proofId(seq), proofAmount: amount, proofAt: at,
+  const pay = (seq: number, k: number, method: PaymentEntry['method'], amount: number, min: number, sender?: string): PaymentEntry => ({
+    id: paymentId(seq, k), method, amount, at: ago(min), by: ADMIN,
+    proof: method === 'cash' ? undefined : { sender: sender ?? '', transferAt: ago(min + 3), note: 'Bukti dikirim via WhatsApp' },
+  })
+  const req = (seq: number, attempt: number, entries: PaymentEntry[], verifier: 'owner' | 'finance', min: number, name: string, result?: VerificationRequest['result']): VerificationRequest => ({
+    id: requestId(seq, attempt), verifier, note: '', requestedAt: ago(min), requestedBy: ADMIN, invoice: invoiceNo(seq, d), customer: `${customerCode(seq)} ${name}`,
+    entries: entries.map((e) => ({ id: e.id, method: e.method, amount: e.amount, sender: e.proof?.sender, transferAt: e.proof?.transferAt })), result,
   })
 
-  const t15 = ago(300), t16 = ago(280), t17 = ago(260), t18 = ago(240)
-  const orders: Order[] = [
-    mk(15, {
-      customerName: 'Pelanggan A', whatsapp: '081234500015',
-      proof: { id: proofId(15), amount: 150000, transferAt: t15, sender: 'PELANGGAN A', note: 'Dikirim via WhatsApp' },
+  const p15 = pay(15, 1, 'transfer', 150000, 300, 'PELANGGAN A')
+  const p16 = pay(16, 1, 'transfer', 150000, 280, 'PELANGGAN B')
+  const p17 = pay(17, 1, 'transfer', 85000, 260, 'PELANGGAN C')
+  const p18 = pay(18, 1, 'ewallet', 50000, 240, 'PELANGGAN D')
+  const p19 = pay(19, 1, 'cash', 120000, 220)
+  const p20 = pay(20, 1, 'transfer', 50000, 210, 'PELANGGAN F')
+
+  const transactions: Transaction[] = [
+    mk(15, 'Pelanggan A', { payments: [p15] }),
+    mk(16, 'Pelanggan B', { payments: [p16], requests: [req(16, 1, [p16], 'owner', 200, 'Pelanggan B')] }),
+    mk(17, 'Pelanggan C', {
+      service: 'Unyellowing', pairs: 1, bill: 85000, payments: [p17],
+      requests: [req(17, 1, [p17], 'owner', 190, 'Pelanggan C', { id: resultId(17, 1), conclusion: 'sesuai', checklist: ALL, note: 'Mutasi masuk Rp85.000.', by: 'owner', byName: 'Pak Bayu', at: ago(150) })],
     }),
-    mk(16, {
-      customerName: 'Pelanggan B', whatsapp: '081234500016',
-      proof: { id: proofId(16), amount: 150000, transferAt: t16, sender: 'PELANGGAN B', note: 'Dikirim via WhatsApp' },
-      requests: [{ id: requestId(16, 1), verifier: 'owner', note: '', requestedAt: ago(200), requestedBy: 'Ari · Admin', stale: false, snapshot: snap(16, 'Pelanggan B', 150000, t16) }],
-      history: [
-        { at: ago(390), actor: 'Ari · Admin', text: 'Pesanan PSN-016 dibuat. Pembayaran Bank Transfer tercatat.' },
-        { at: ago(200), actor: 'Ari · Admin', text: 'Permintaan PRM-016 dikirim ke Owner.' },
-      ],
+    mk(18, 'Pelanggan D', {
+      service: 'Fast Clean', pairs: 1, bill: 50000, payments: [p18],
+      requests: [req(18, 1, [p18], 'finance', 170, 'Pelanggan D', {
+        id: resultId(18, 1), conclusion: 'perlu_klarifikasi', checklist: { identity: true, amount: true, time: false, received: false },
+        note: 'Nominal cocok, tetapi waktu transfer belum ditemukan di mutasi.', by: 'finance', byName: 'Sinta', at: ago(120),
+      })],
     }),
-    mk(17, {
-      customerName: 'Pelanggan C', whatsapp: '081234500017', service: 'Unyellowing', pairs: 1, amount: 85000,
-      proof: { id: proofId(17), amount: 85000, transferAt: t17, sender: 'PELANGGAN C', note: '' },
-      requests: [{
-        id: requestId(17, 1), verifier: 'owner', note: '', requestedAt: ago(190), requestedBy: 'Ari · Admin', stale: false, snapshot: snap(17, 'Pelanggan C', 85000, t17),
-        result: { id: resultId(17, 1), conclusion: 'sesuai', checklist: ALL, note: 'Mutasi masuk Rp85.000.', by: 'owner', byName: 'Pak Bayu', at: ago(150) },
-      }],
-      history: [
-        { at: ago(380), actor: 'Ari · Admin', text: 'Pesanan PSN-017 dibuat. Pembayaran Bank Transfer tercatat.' },
-        { at: ago(190), actor: 'Ari · Admin', text: 'Permintaan PRM-017 dikirim ke Owner.' },
-        { at: ago(150), actor: 'Pak Bayu · Owner', text: 'Hasil HAS-017 untuk PRM-017: Sesuai. Catatan: Mutasi masuk Rp85.000.' },
-      ],
+    mk(19, 'Pelanggan E', { service: 'Repaint', pairs: 1, bill: 120000, payments: [p19] }),
+    mk(20, 'Pelanggan F', {
+      bill: 75000, pairs: 1, stage: 'diproses', payments: [p20],
+      requests: [req(20, 1, [p20], 'owner', 205, 'Pelanggan F', { id: resultId(20, 1), conclusion: 'sesuai', checklist: ALL, note: 'DP masuk Rp50.000.', by: 'owner', byName: 'Pak Bayu', at: ago(180) })],
+      changes: [{ id: 'c20', kind: 'stage', from: 'antrian', to: 'diproses', note: '', basis: resultId(20, 1), by: ADMIN, at: ago(170) }],
     }),
-    mk(18, {
-      customerName: 'Pelanggan D', whatsapp: '081234500018', service: 'Fast Cleaning', pairs: 1, amount: 50000,
-      proof: { id: proofId(18), amount: 50000, transferAt: t18, sender: 'PELANGGAN D', note: '' },
-      requests: [{
-        id: requestId(18, 1), verifier: 'finance', note: '', requestedAt: ago(170), requestedBy: 'Ari · Admin', stale: false, snapshot: snap(18, 'Pelanggan D', 50000, t18),
-        result: {
-          id: resultId(18, 1), conclusion: 'perlu_klarifikasi', checklist: { identity: true, amount: true, time: false, received: false },
-          note: 'Nominal cocok, tetapi waktu transfer belum ditemukan di mutasi.', by: 'finance', byName: 'Sinta', at: ago(120),
-        },
-      }],
-      history: [
-        { at: ago(370), actor: 'Ari · Admin', text: 'Pesanan PSN-018 dibuat. Pembayaran Bank Transfer tercatat.' },
-        { at: ago(170), actor: 'Ari · Admin', text: 'Permintaan PRM-018 dikirim ke Finance.' },
-        { at: ago(120), actor: 'Sinta · Finance', text: 'Hasil HAS-018 untuk PRM-018: Perlu klarifikasi. Catatan: Nominal cocok, tetapi waktu transfer belum ditemukan di mutasi.' },
-      ],
-    }),
-    mk(19, { customerName: 'Pelanggan E', whatsapp: '081234500019', service: 'Repaint', pairs: 1, amount: 120000, method: 'tunai' }),
   ]
+  // riwayat ringkas untuk entri contoh
+  for (const t of transactions) {
+    for (const p of t.payments) t.history.push({ at: p.at, actor: ADMIN, text: `Pembayaran ${p.id} ${p.method === 'cash' ? 'Cash' : p.method === 'transfer' ? 'Bank Transfer' : 'E-Wallet'} Rp${p.amount.toLocaleString('id-ID')} tercatat.` })
+    for (const r of t.requests) {
+      t.history.push({ at: r.requestedAt, actor: ADMIN, text: `Permintaan ${r.id} (${r.entries.map((e) => e.id).join(', ')}) dikirim ke ${r.verifier === 'owner' ? 'Owner' : 'Finance'}.` })
+      if (r.result) t.history.push({ at: r.result.at, actor: `${r.result.byName} · ${r.result.by === 'owner' ? 'Owner' : 'Finance'}`, text: `Hasil ${r.result.id} untuk ${r.id}: ${r.result.conclusion === 'sesuai' ? 'Sesuai' : 'Perlu klarifikasi'}. Catatan: ${r.result.note}` })
+    }
+    for (const c of t.changes) t.history.push({ at: c.at, actor: c.by, text: `Status Antrian → Diproses (dasar ${c.basis}).` })
+    t.history.sort((a, b) => a.at.localeCompare(b.at))
+  }
 
   return {
-    version: 1, seq: 19, role: 'admin',
+    version: 2, seq: 20, role: 'admin',
     names: { admin: 'Ari', owner: 'Pak Bayu', finance: 'Sinta' },
     contacts: [
       { verifier: 'owner', name: 'Pak Bayu', channel: 'WhatsApp 0812-0000-0001 (contoh)', note: 'Pemeriksa utama rekening usaha.' },
       { verifier: 'finance', name: 'Sinta', channel: 'WhatsApp 0812-0000-0002 (contoh)', note: 'Pemeriksa pengganti bila Owner belum merespons.' },
     ],
-    orders,
+    transactions,
   }
 }

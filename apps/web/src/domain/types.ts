@@ -1,26 +1,32 @@
 export type Role = 'admin' | 'owner' | 'finance'
 export type Verifier = 'owner' | 'finance'
-export type PaymentMethod = 'transfer' | 'tunai'
+export type PayMethod = 'cash' | 'transfer' | 'ewallet'
 export type Conclusion = 'sesuai' | 'perlu_klarifikasi' | 'tidak_sesuai'
-export type DecisionType = 'teruskan' | 'tahan'
 export type HoldReason = 'hasil_belum_tersedia' | 'hasil_belum_memadai' | 'data_perlu_dicek' | 'lainnya'
+/** Alur status pengerjaan Fleffy (UX-SPEC §7.1). */
+export type Stage = 'antrian' | 'diproses' | 'finishing' | 'qc' | 'selesai'
 
-/** Keadaan pemeriksaan — selalu diturunkan dari data (AGENTS §5.1). */
+/** Keadaan pemeriksaan transaksi — diturunkan dari entri (UX-SPEC §7.3). */
 export type VerificationState = 'tidak_perlu' | 'belum_diminta' | 'menunggu' | 'hasil_tersedia'
+/** Status per entri pembayaran (UX-SPEC §7.2). */
+export type EntryStatus = 'tunai' | 'belum_diminta' | 'menunggu' | 'dikonfirmasi' | 'perlu_klarifikasi' | 'tidak_sesuai'
 
-export interface Proof {
-  id: string // BKT-NNN
+export interface PaymentEntry {
+  id: string // BYR-NNN-k
+  method: PayMethod
   amount: number
-  transferAt: string
-  sender: string
-  note: string
+  at: string // waktu dicatat kasir
+  by: string
+  /** Bukti pelanggan — hanya non-tunai. */
+  proof?: { sender: string; transferAt: string; note: string }
+  cancelled?: boolean
 }
 
 export interface Checklist {
-  identity: boolean // Identitas pesanan dan bukti sesuai
-  amount: boolean // Nominal sesuai
-  time: boolean // Waktu transfer cocok dengan data bukti
-  received: boolean // Dana diterima menurut mutasi rekening
+  identity: boolean
+  amount: boolean
+  time: boolean
+  received: boolean
 }
 
 export interface VerificationResult {
@@ -33,77 +39,61 @@ export interface VerificationResult {
   at: string
 }
 
-export interface RequestSnapshot {
-  orderCode: string
-  customerName: string
-  amount: number
-  method: PaymentMethod
-  proofId?: string
-  proofAmount?: number
-  proofAt?: string
-}
-
 export interface VerificationRequest {
   id: string // PRM-NNN[-B]
   verifier: Verifier
   note: string
   requestedAt: string
   requestedBy: string
-  snapshot: RequestSnapshot
-  /** true bila data pesanan berubah setelah permintaan dibuat. */
-  stale: boolean
+  /** Snapshot entri yang diperiksa (FR-06). */
+  entries: { id: string; method: PayMethod; amount: number; sender?: string; transferAt?: string }[]
+  invoice: string
+  customer: string
   result?: VerificationResult
 }
 
-export interface Decision {
+export interface StageChange {
   id: string
-  type: DecisionType
+  kind: 'stage' | 'tahan'
+  from?: Stage
+  to?: Stage
   reason?: HoldReason
   note: string
-  requestId?: string
-  resultId?: string
+  basis?: string // HAS-ID dasar keputusan
   by: string
   at: string
 }
 
-export interface HistoryEntry {
-  at: string
-  actor: string
-  text: string
-}
+export interface HistoryEntry { at: string; actor: string; text: string }
 
-export interface Order {
-  id: string // internal
-  code: string // PSN-NNN
+export interface Transaction {
+  id: string
   seq: number
+  invoice: string // INV-YYMMDD-NNN
+  customerCode: string // K-n
   customerName: string
-  whatsapp: string
+  phone: string
   service: string
   pairs: number
-  amount: number
-  method: PaymentMethod
+  bill: number // tagihan
   note: string
-  proof?: Proof
+  stage: Stage
   createdAt: string
   updatedAt: string
+  payments: PaymentEntry[]
   requests: VerificationRequest[]
-  decisions: Decision[]
+  changes: StageChange[]
   history: HistoryEntry[]
   sample?: boolean
 }
 
-export interface Contact {
-  verifier: Verifier
-  name: string
-  channel: string
-  note: string
-}
+export interface Contact { verifier: Verifier; name: string; channel: string; note: string }
 
 export interface AppState {
-  version: 1
+  version: 2
   seq: number
   role: Role
   names: Record<Role, string>
   contacts: Contact[]
-  orders: Order[]
+  transactions: Transaction[]
 }

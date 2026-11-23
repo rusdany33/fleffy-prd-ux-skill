@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import type { HoldReason, Order } from '../../domain/types'
+import type { HoldReason } from '../../domain/types'
 import { HOLD_REASON_LABEL } from '../../utils/format'
 import { BottomSheet, Button, Field, InfoBox, fieldAria } from '../common'
 
 /** INTERACTION-SPEC §6.2 — bottom sheet Tahan untuk klarifikasi. */
 export function HoldSheet({ o, defaultReason, onClose, onSubmit }: {
-  o: Order; defaultReason?: HoldReason; onClose: () => void; onSubmit: (reason: HoldReason, note: string) => string | null
+  o: { invoice: string }; defaultReason?: HoldReason; onClose: () => void; onSubmit: (reason: HoldReason, note: string) => string | null
 }) {
   const [reason, setReason] = useState<HoldReason | null>(defaultReason ?? null)
   const [note, setNote] = useState('')
@@ -22,8 +22,8 @@ export function HoldSheet({ o, defaultReason, onClose, onSubmit }: {
   }
 
   return (
-    <BottomSheet title={`Tahan pesanan ${o.code}?`} onClose={onClose}>
-      <p className="text-secondary">Pesanan tidak diteruskan ke teknisi sampai ada hasil yang memadai.</p>
+    <BottomSheet title={`Tahan transaksi ${o.invoice}?`} onClose={onClose}>
+      <p className="text-secondary">Transaksi tetap di Antrian dan tidak diteruskan ke teknisi sampai ada hasil yang memadai.</p>
       <fieldset className="radio-list" role="radiogroup">
         <legend className="label mb-8">Alasan *</legend>
         {(Object.keys(HOLD_REASON_LABEL) as HoldReason[]).map((r) => (

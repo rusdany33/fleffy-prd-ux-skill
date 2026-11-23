@@ -1,188 +1,206 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, Checklist } from '../domain/types'
-import { createOrder, decideForward, decideHold, recordResult, requestVerification, updateOrder } from '../domain/actions'
+import { addPayment, advanceStage, cancelPayment, createTransaction, holdTransaction, recordResult, requestVerification, updateTransaction } from '../domain/actions'
 import {
-  activeRequest, canForward, currentDecision, fundsConfirmed, hasStaleResult, isForwarded, queueKey, resultAdequate, searchOrders, summary, verificationState,
+  canAdvance, entryStatus, fullyConfirmed, isLunas, lastHold, notices, paidConfirmed, paidRecorded, pendingRequest, queueKey, searchTransactions, summary,
+  verificationState,
 } from '../domain/rules'
-import { orderCode, requestId, resultId } from '../domain/ids'
-import { validateDraft, type OrderDraft } from '../utils/validation'
+import { customerCode, invoiceNo, paymentId, requestId, resultId } from '../domain/ids'
+import { validatePayment, validateTx, type PaymentDraft, type TxDraft } from '../utils/validation'
 import { seedState } from '../services/seed'
 
 const ALL: Checklist = { identity: true, amount: true, time: true, received: true }
-const draft = (o: Partial<OrderDraft> = {}): OrderDraft => ({
-  customerName: 'Uji', whatsapp: '081234567890', service: 'Deep Cleaning', pairs: '2', amount: '150000', method: 'transfer', note: '',
-  hasProof: true, proofAmount: '150000', proofAt: '2026-11-20T10:00', proofSender: 'UJI', proofNote: '', ...o,
+const pay = (o: Partial<PaymentDraft> = {}): PaymentDraft => ({ method: 'transfer', amount: '150000', sender: 'UJI', transferAt: '2026-11-20T10:00', note: '', ...o })
+const draft = (o: Partial<TxDraft> = {}): TxDraft => ({
+  customerName: 'Uji', phone: '081234567890', service: 'Deep Clean', pairs: '2', bill: '150000', note: '', withPayment: true, payment: pay(), ...o,
 })
 const as = (s: AppState, role: AppState['role']): AppState => ({ ...s, role })
+const get = (s: AppState, id: string) => s.transactions.find((t) => t.id === id)!
 
-function fresh() {
-  const base: AppState = { ...seedState(), orders: [], seq: 14, role: 'admin' }
-  const { state, order } = createOrder(base, draft())
-  return { s: state, id: order.id }
+function fresh(d: Partial<TxDraft> = {}) {
+  const base: AppState = { ...seedState(), transactions: [], seq: 14, role: 'admin' }
+  const { state, tx } = createTransaction(base, draft(d))
+  return { s: state, id: tx.id }
 }
-const get = (s: AppState, id: string) => s.orders.find((o) => o.id === id)!
-
-/** Alur lengkap sampai hasil Sesuai. */
-function toAdequate() {
-  const { s, id } = fresh()
+const confirm = (s: AppState, id: string, conclusion: 'sesuai' | 'perlu_klarifikasi' | 'tidak_sesuai' = 'sesuai') => {
   let x = requestVerification(s, id, 'owner', '')
-  x = recordResult(as(x, 'owner'), id, 'sesuai', ALL, '')
-  return { s: as(x, 'admin'), id }
+  x = recordResult(as(x, 'owner'), id, conclusion, conclusion === 'sesuai' ? ALL : { ...ALL, received: false }, conclusion === 'sesuai' ? '' : 'cek')
+  return as(x, 'admin')
 }
 
-describe('ID & pembuatan pesanan (AC-001, AC-003)', () => {
-  it('membuat PSN/BKT berurutan', () => {
+describe('Identitas Fleffy (AC-041)', () => {
+  it('INV, kode pelanggan, BYR, PRM, HAS', () => {
     const { s, id } = fresh()
-    expect(get(s, id).code).toBe('PSN-015')
-    expect(get(s, id).proof?.id).toBe('BKT-015')
-    expect(orderCode(7)).toBe('PSN-007')
+    const t = get(s, id)
+    expect(t.invoice).toMatch(/^INV-\d{6}-015$/)
+    expect(t.customerCode).toBe('K-15')
+    expect(t.payments[0].id).toBe('BYR-015-1')
+    expect(invoiceNo(7, new Date('2026-11-23'))).toBe('INV-261123-007')
+    expect(customerCode(3)).toBe('K-3')
+    expect(paymentId(15, 2)).toBe('BYR-015-2')
     expect(requestId(15, 2)).toBe('PRM-015-B')
     expect(resultId(15, 1)).toBe('HAS-015')
   })
-  it('hanya Admin yang membuat pesanan', () => {
-    expect(() => createOrder(as(seedState(), 'owner'), draft())).toThrow()
+  it('hanya Admin membuat transaksi', () => {
+    expect(() => createTransaction(as(seedState(), 'owner'), draft())).toThrow()
   })
 })
 
-describe('Validasi (AC-002)', () => {
-  it('menolak field wajib kosong, spasi, nominal 0', () => {
-    const e = validateDraft(draft({ customerName: '   ', amount: '0', pairs: '0', proofSender: '' }))
-    expect(Object.keys(e).sort()).toEqual(['amount', 'customerName', 'pairs', 'proofSender'])
+describe('Validasi (AC-002, AC-042)', () => {
+  it('menolak field wajib kosong, tagihan 0, pengirim kosong', () => {
+    const e = validateTx(draft({ customerName: ' ', bill: '0', pairs: '0', payment: pay({ sender: '' }) }))
+    expect(e.customerName && e.bill && e.pairs).toBeTruthy()
   })
-  it('menolak waktu transfer di masa depan dan WA tidak valid', () => {
-    const e = validateDraft(draft({ proofAt: '2999-01-01T10:00', whatsapp: 'abc' }), new Date('2026-11-23'))
-    expect(e.proofAt).toBeTruthy()
-    expect(e.whatsapp).toBeTruthy()
+  it('nominal melebihi sisa tagihan ditolak', () => {
+    expect(validatePayment(pay({ amount: '200000' }), 150000).payAmount).toMatch(/melebihi/)
+    expect(validateTx(draft({ payment: pay({ amount: '200000' }) })).payAmount).toBeTruthy()
   })
-  it('tunai tidak memerlukan bukti', () => {
-    expect(validateDraft(draft({ method: 'tunai', proofAmount: '', proofSender: '', proofAt: '' }))).toEqual({})
+  it('cash tidak memerlukan bukti', () => {
+    expect(validatePayment(pay({ method: 'cash', sender: '', transferAt: '' }), 150000)).toEqual({})
   })
 })
 
-describe('Catatan ≠ dana dikonfirmasi (AC-004)', () => {
-  it('belum dikonfirmasi saat tercatat & menunggu', () => {
+describe('Dibayar vs dikonfirmasi (AC-043, AC-004)', () => {
+  it('transfer tercatat → LUNAS tetapi dana belum dikonfirmasi', () => {
     const { s, id } = fresh()
-    expect(fundsConfirmed(get(s, id))).toBe(false)
-    const x = requestVerification(s, id, 'owner', '')
-    expect(verificationState(get(x, id))).toBe('menunggu')
-    expect(fundsConfirmed(get(x, id))).toBe(false)
+    const t = get(s, id)
+    expect(isLunas(t)).toBe(true)
+    expect(paidRecorded(t)).toBe(150000)
+    expect(paidConfirmed(t)).toBe(0)
+    expect(verificationState(t)).toBe('belum_diminta')
   })
-  it('dikonfirmasi setelah hasil memadai', () => {
-    const { s, id } = toAdequate()
-    expect(fundsConfirmed(get(s, id))).toBe(true)
+  it('tunai langsung terhitung dikonfirmasi', () => {
+    const { s, id } = fresh({ payment: pay({ method: 'cash', amount: '50000' }) })
+    expect(paidConfirmed(get(s, id))).toBe(50000)
+    expect(verificationState(get(s, id))).toBe('tidak_perlu')
+  })
+  it('setelah Sesuai dana dikonfirmasi', () => {
+    const { s, id } = fresh()
+    const t = get(confirm(s, id), id)
+    expect(paidConfirmed(t)).toBe(150000)
+    expect(fullyConfirmed(t)).toBe(true)
   })
 })
 
-describe('Permintaan pemeriksaan (AC-010, AC-011, AC-016)', () => {
-  it('menyalin konteks tanpa input ulang', () => {
-    const { s, id } = fresh()
-    const r = activeRequest(get(requestVerification(s, id, 'finance', 'cek ya'), id))!
-    expect(r.id).toBe('PRM-015')
-    expect(r.snapshot).toMatchObject({ orderCode: 'PSN-015', customerName: 'Uji', amount: 150000, proofId: 'BKT-015' })
+describe('Multi-pembayaran & pemeriksaan per entri (AC-042, AC-044)', () => {
+  it('DP dikonfirmasi, pelunasan baru kembali Belum diminta', () => {
+    const { s, id } = fresh({ bill: '75000', payment: pay({ amount: '50000' }) })
+    let x = confirm(s, id)
+    x = addPayment(x, id, pay({ amount: '25000' }))
+    const t = get(x, id)
+    expect(t.payments.map((p) => entryStatus(t, p))).toEqual(['dikonfirmasi', 'belum_diminta'])
+    expect(paidRecorded(t)).toBe(75000)
+    expect(paidConfirmed(t)).toBe(50000)
+    x = requestVerification(x, id, 'finance', '')
+    expect(pendingRequest(get(x, id))!.entries.map((e) => e.id)).toEqual(['BYR-015-2'])
+    expect(pendingRequest(get(x, id))!.id).toBe('PRM-015-B')
   })
   it('menolak permintaan kedua saat menunggu', () => {
     const { s, id } = fresh()
     const x = requestVerification(s, id, 'owner', '')
     expect(() => requestVerification(x, id, 'owner', '')).toThrow(/menunggu/)
   })
-  it('permintaan ulang setelah Perlu klarifikasi → PRM-015-B', () => {
+  it('hasil Perlu klarifikasi bisa diminta ulang dengan entri yang sama', () => {
     const { s, id } = fresh()
-    let x = requestVerification(s, id, 'owner', '')
-    x = as(recordResult(as(x, 'owner'), id, 'perlu_klarifikasi', { ...ALL, time: false }, 'waktu beda'), 'admin')
+    let x = confirm(s, id, 'perlu_klarifikasi')
+    expect(entryStatus(get(x, id), get(x, id).payments[0])).toBe('perlu_klarifikasi')
     x = requestVerification(x, id, 'finance', '')
-    expect(activeRequest(get(x, id))!.id).toBe('PRM-015-B')
-    expect(get(x, id).requests).toHaveLength(2)
+    expect(pendingRequest(get(x, id))!.entries[0].id).toBe('BYR-015-1')
   })
-  it('pemeriksa tidak membuat permintaan', () => {
+  it('nominal tambahan melebihi sisa ditolak', () => {
     const { s, id } = fresh()
-    expect(() => requestVerification(as(s, 'owner'), id, 'owner', '')).toThrow()
+    expect(() => addPayment(s, id, pay({ amount: '1' }))).toThrow()
   })
 })
 
-describe('Hasil pemeriksaan (AC-013, AC-014, AC-015)', () => {
-  it('Admin tidak dapat mencatat hasil', () => {
+describe('Hasil hanya oleh pemeriksa (AC-013, AC-014)', () => {
+  it('Admin ditolak; Sesuai butuh checklist; selain Sesuai wajib catatan', () => {
     const { s, id } = fresh()
     const x = requestVerification(s, id, 'owner', '')
     expect(() => recordResult(x, id, 'sesuai', ALL, '')).toThrow(/Owner atau Finance/)
-  })
-  it('Sesuai butuh checklist lengkap; selain Sesuai wajib catatan', () => {
-    const { s, id } = fresh()
-    const x = as(requestVerification(s, id, 'owner', ''), 'owner')
-    expect(() => recordResult(x, id, 'sesuai', { ...ALL, received: false }, '')).toThrow()
-    expect(() => recordResult(x, id, 'tidak_sesuai', ALL, ' ')).toThrow()
-  })
-  it('hasil memadai hanya untuk Sesuai + data terbaru', () => {
-    const { s, id } = toAdequate()
-    expect(resultAdequate(get(s, id))).toBe(true)
-    expect(activeRequest(get(s, id))!.result!.id).toBe('HAS-015')
+    expect(() => recordResult(as(x, 'owner'), id, 'sesuai', { ...ALL, time: false }, '')).toThrow()
+    expect(() => recordResult(as(x, 'owner'), id, 'tidak_sesuai', ALL, ' ')).toThrow()
   })
 })
 
-describe('Keputusan (AC-018 – AC-022)', () => {
-  it('Teruskan ditolak sebelum ada hasil memadai', () => {
+describe('Gerbang status pengerjaan (AC-045, AC-046)', () => {
+  it('Antrian → Diproses ditolak sebelum dikonfirmasi', () => {
     const { s, id } = fresh()
-    expect(canForward(get(s, id), 'admin').ok).toBe(false)
-    expect(() => decideForward(s, id)).toThrow()
+    expect(canAdvance(get(s, id), 'admin').ok).toBe(false)
+    expect(() => advanceStage(s, id)).toThrow(/Minta pemeriksaan/)
     const x = requestVerification(s, id, 'owner', '')
-    expect(() => decideForward(x, id)).toThrow(/Tunggu hasil/)
+    expect(() => advanceStage(x, id)).toThrow(/Tunggu hasil/)
   })
-  it('Teruskan tersimpan dengan dasar HAS & PRM', () => {
-    const { s, id } = toAdequate()
-    const x = decideForward(s, id)
-    const d = currentDecision(get(x, id))!
-    expect(d).toMatchObject({ type: 'teruskan', resultId: 'HAS-015', requestId: 'PRM-015' })
-    expect(isForwarded(get(x, id))).toBe(true)
+  it('tanpa pembayaran ditolak', () => {
+    const { s, id } = fresh({ withPayment: false })
+    expect(() => advanceStage(s, id)).toThrow(/Belum ada pembayaran/)
+  })
+  it('DP yang dikonfirmasi cukup untuk Diproses; Selesai butuh dana penuh', () => {
+    const { s, id } = fresh({ bill: '75000', payment: pay({ amount: '50000' }) })
+    let x = confirm(s, id)
+    x = advanceStage(x, id)
+    expect(get(x, id).stage).toBe('diproses')
+    expect(get(x, id).changes.at(-1)!.basis).toBe('HAS-015')
+    x = advanceStage(advanceStage(x, id), id)
+    expect(get(x, id).stage).toBe('qc')
+    expect(() => advanceStage(x, id)).toThrow(/belum sama dengan tagihan/)
+    x = addPayment(x, id, pay({ method: 'cash', amount: '25000' }))
+    x = advanceStage(x, id)
+    expect(get(x, id).stage).toBe('selesai')
+  })
+  it('tunai penuh boleh langsung diteruskan', () => {
+    const { s, id } = fresh({ payment: pay({ method: 'cash' }) })
+    expect(get(advanceStage(s, id), id).stage).toBe('diproses')
+  })
+  it('hanya Admin mengubah status & menahan', () => {
+    const { s, id } = fresh()
+    const x = confirm(s, id)
+    expect(() => advanceStage(as(x, 'owner'), id)).toThrow()
+    expect(() => holdTransaction(as(x, 'finance'), id, 'lainnya', 'x')).toThrow()
   })
   it('Tahan wajib alasan; Lainnya wajib catatan', () => {
     const { s, id } = fresh()
-    expect(() => decideHold(s, id, 'lainnya', '')).toThrow()
-    const x = decideHold(s, id, 'data_perlu_dicek', '')
-    expect(currentDecision(get(x, id))?.type).toBe('tahan')
-  })
-  it('hanya Admin yang memutuskan', () => {
-    const { s, id } = toAdequate()
-    expect(() => decideForward(as(s, 'owner'), id)).toThrow()
-    expect(() => decideHold(as(s, 'finance'), id, 'lainnya', 'x')).toThrow()
-  })
-  it('tunai dapat diteruskan tanpa pemeriksaan (AC-039)', () => {
-    const { s } = fresh()
-    const { state, order } = createOrder(s, draft({ method: 'tunai' }))
-    expect(verificationState(order)).toBe('tidak_perlu')
-    expect(isForwarded(get(decideForward(state, order.id), order.id))).toBe(true)
+    expect(() => holdTransaction(s, id, 'lainnya', '')).toThrow()
+    const x = holdTransaction(s, id, 'data_perlu_dicek', '')
+    expect(lastHold(get(x, id))?.reason).toBe('data_perlu_dicek')
   })
 })
 
-describe('Invalidasi data (AC-008)', () => {
-  it('ubah nominal setelah Teruskan → hasil kedaluwarsa & keputusan batal', () => {
-    const { s, id } = toAdequate()
-    let x = decideForward(s, id)
-    x = updateOrder(x, id, draft({ amount: '175000', proofAmount: '175000' }))
-    const o = get(x, id)
-    expect(hasStaleResult(o)).toBe(true)
-    expect(verificationState(o)).toBe('belum_diminta')
-    expect(fundsConfirmed(o)).toBe(false)
-    expect(isForwarded(o)).toBe(false)
-    expect(canForward(o, 'admin').reason).toMatch(/data terbaru/)
+describe('Batalkan entri (AC-047) & ubah data (§11.6)', () => {
+  it('belum diminta boleh dibatalkan; menunggu/dikonfirmasi tidak', () => {
+    const { s, id } = fresh()
+    const x = cancelPayment(s, id, 'BYR-015-1')
+    expect(paidRecorded(get(x, id))).toBe(0)
+    const y = requestVerification(s, id, 'owner', '')
+    expect(() => cancelPayment(y, id, 'BYR-015-1')).toThrow()
+    expect(() => cancelPayment(confirm(s, id), id, 'BYR-015-1')).toThrow()
   })
-  it('ubah catatan saja tidak membatalkan', () => {
-    const { s, id } = toAdequate()
-    const x = updateOrder(s, id, draft({ note: 'sepatu putih' }))
-    expect(resultAdequate(get(x, id))).toBe(true)
+  it('ubah tagihan tidak membatalkan konfirmasi; tagihan < dibayar ditolak', () => {
+    const { s, id } = fresh({ bill: '150000', payment: pay({ amount: '100000' }) })
+    let x = confirm(s, id)
+    x = updateTransaction(x, id, draft({ bill: '120000' }))
+    expect(paidConfirmed(get(x, id))).toBe(100000)
+    expect(() => updateTransaction(x, id, draft({ bill: '90000' }))).toThrow()
   })
 })
 
-describe('Dua pesanan nominal sama (AC-006) & antrean (AC-023)', () => {
-  it('data contoh PSN-015/PSN-016 Rp150.000 dibedakan', () => {
+describe('Data contoh, antrean, notifikasi (AC-006, AC-023, AC-048)', () => {
+  it('dua transaksi Rp150.000 dibedakan nota & pelanggan', () => {
     const s = seedState()
-    const same = s.orders.filter((o) => o.amount === 150000)
-    expect(same.map((o) => o.code)).toEqual(['PSN-015', 'PSN-016'])
-    expect(searchOrders(s.orders, 'pelanggan b').map((o) => o.code)).toEqual(['PSN-016'])
-    expect(activeRequest(same[0])).toBeUndefined()
-    expect(activeRequest(same[1])!.snapshot.orderCode).toBe('PSN-016')
+    const same = s.transactions.filter((t) => t.bill === 150000)
+    expect(same.map((t) => t.customerCode)).toEqual(['K-15', 'K-16'])
+    expect(searchTransactions(s.transactions, 'pelanggan b').map((t) => t.customerCode)).toEqual(['K-16'])
+    expect(searchTransactions(s.transactions, 'BYR-018-1')).toHaveLength(1)
   })
-  it('ringkasan & queueKey dari data contoh', () => {
+  it('ringkasan antrean', () => {
     const s = seedState()
-    expect(summary(s.orders)).toEqual({ belum_diminta: 1, menunggu: 1, hasil_tersedia: 2, keputusan: 0 })
-    expect(queueKey(s.orders.find((o) => o.method === 'tunai')!)).toBeNull()
+    expect(summary(s.transactions)).toEqual({ belum_diminta: 1, menunggu: 1, hasil_tersedia: 2, diteruskan: 1 })
+    expect(queueKey(s.transactions.find((t) => t.customerCode === 'K-19')!)).toBeNull()
+  })
+  it('notifikasi sesuai peran', () => {
+    const s = seedState()
+    expect(notices(s.transactions, 'owner').map((n) => n.title)).toEqual([expect.stringContaining('Permintaan pemeriksaan')])
+    expect(notices(s.transactions, 'finance')).toHaveLength(0)
+    expect(notices(s.transactions, 'admin').length).toBe(2)
   })
 })

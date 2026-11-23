@@ -7,6 +7,7 @@
   --amber-400: #F2C46D; --amber-950: #33270F;
   --green-400: #6FD39A; --green-950: #10291C;
   --red-400: #FF8A80; --red-950: #3A1514;
+  --blue-500: #2B74E4; --blue-600: #1F5FC4; --white: #FFFFFF; /* v1.1 aksen Fleffy */
 
   /* semantic */
   --color-bg: var(--gray-950);
@@ -17,8 +18,9 @@
   --color-text: var(--gray-100);
   --color-text-secondary: var(--gray-400);
   --color-text-disabled: var(--gray-500);
-  --color-action: var(--gray-100);
-  --color-action-text: var(--gray-950);
+  --color-action: var(--blue-500);
+  --color-action-hover: var(--blue-600);
+  --color-action-text: var(--white);
   --color-focus: var(--blue-400);
   --color-info: var(--blue-400); --color-info-bg: var(--blue-950);
   --color-warning: var(--amber-400); --color-warning-bg: var(--amber-950);
@@ -44,6 +46,7 @@
   --content-max: 560px;
   --control-h: 48px;
   --control-h-sm: 36px;
+  --fab-size: 56px;
 
   /* elevation & motion */
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, .45);

@@ -10,6 +10,31 @@ Semua perubahan pada repositori ini dicatat di sini. Format mengikuti [Keep a Ch
 
 ---
 
+## [0.2.0] — 2026-11-23
+
+**Iterasi setelah eksperimen**, berdasarkan analisis dua rekaman layar aplikasi Fleffy asli dan halaman Google Play `com.fleffy.mobile`. Dokumen UX Skill diperbarui lebih dulu ke v1.1 (commit terpisah), lalu aplikasi mengikuti dokumen tersebut. Hasil eksperimen v0.1.x tetap utuh di riwayat git.
+
+### Temuan dari aplikasi asli
+- Pada *Buat Transaksi*, kasir memilih Cash / Bank Transfer / E-Wallet dan mengetik nominal. Aplikasi langsung menampilkan **LUNAS** dan **"Pembayaran diterima: Bank Transfer …"** tanpa pemeriksaan. Ini masalah inti riset (M3).
+- Satu transaksi bisa dibayar sebagian (BELUM LUNAS, "Dibayar Rp X dari Rp Y").
+- Identitas transaksi berupa nota `INV…`, pelanggan berkode `K-n`, status produksi Antrian → Diproses → Finishing → Quality Control → Selesai, dan tombol "+" di bottom nav.
+
+### Diubah
+- **Model data**: Pesanan menjadi **Transaksi** bernota `INV-YYMMDD-NNN` dan pelanggan berkode `K-n`. Pembayaran menjadi **daftar entri** `BYR-NNN-k` (Cash / Bank Transfer / E-Wallet) dengan bukti per entri non-tunai.
+- **Dua status pembayaran berdampingan**: chip LUNAS/BELUM LUNAS dan "Dibayar X dari Y" (seperti Fleffy), plus **"Dana dikonfirmasi Z dari Y"** dengan progress bar dua lapis. Ada peringatan bila LUNAS di catatan tetapi dana belum seluruhnya dipastikan.
+- **Pemeriksaan per entri**: permintaan mencakup semua entri non-tunai yang belum dikonfirmasi. Hasil *Sesuai* mengonfirmasi tepat entri tersebut. Pelunasan berikutnya diperiksa dengan permintaan baru (`PRM-NNN-B`).
+- **Gerbang status pengerjaan** menggantikan keputusan Teruskan yang berdiri sendiri. *Teruskan ke teknisi* (Antrian → Diproses) hanya bila semua entri non-tunai dikonfirmasi; DP yang terkonfirmasi sudah cukup. *Tandai Selesai* hanya bila dana dikonfirmasi = tagihan.
+- **Visual Fleffy**: tombol utama biru berbentuk pil, tombol **+** di baris bottom nav untuk Buat Transaksi, menu "Transaksi", serta chip LUNAS/BELUM LUNAS dan status pengerjaan.
+- **Notifikasi** di Beranda: Owner/Finance melihat permintaan yang ditujukan kepadanya (meniru push "Transaksi Baru!"); Admin melihat hasil yang masuk.
+- **Tambah pembayaran** (bottom sheet, default = sisa tagihan) dan **Batalkan entri** (tunai / belum diminta / tidak sesuai).
+- Mengubah tagihan tidak membatalkan entri yang sudah dikonfirmasi, dan tagihan tidak boleh lebih kecil dari pembayaran tercatat (INTERACTION-SPEC §11.6).
+- 24 unit test domain baru menggantikan 23 test v0.1.0.
+
+### Diperbaiki selama iterasi (ditemukan saat uji browser)
+1. Chip "✓ Dana dikonfirmasi" muncul padahal baru DP yang dikonfirmasi. Sekarang tampil "✓ Dikonfirmasi sebagian" sampai seluruh tagihan dipastikan.
+2. Setelah satu-satunya entri dibatalkan, chip menulis "Tunai · tanpa pemeriksaan". Sekarang tampil "Belum ada pembayaran".
+3. FAB mengambang menutupi nominal di kartu saat menggulir. FAB dipindah ke dalam baris bottom nav seperti aplikasi Fleffy.
+
 ## [0.1.1] — 2026-11-23
 
 ### Dokumentasi

@@ -50,3 +50,30 @@ Unit test: **23/23 lulus** (`apps/web/src/tests/domain.test.ts`).
 | AC-040 URL tidak dikenal | Pass | Browser: "Pesanan tidak ditemukan." | |
 
 **Ringkasan:** 39 Pass (1 di antaranya sebagian) · 0 Fail · 1 Not Tested (AC-017, Should Have).
+
+---
+
+# TEST-REPORT — v0.2.0 (UX Skill v1.1)
+
+**Unit test:** 24/24 lulus (`apps/web/src/tests/domain.test.ts`). **Browser:** 320×700, 375×812, 1280×800.
+
+| ID | Status | Bukti |
+|---|---|---|
+| AC-041 Terminologi Fleffy | Pass | Browser: "INV-261123-021 · K-21 Uji Browser · Rp75.000", menu "Transaksi", chip LUNAS/BELUM LUNAS. Unit test ID. |
+| AC-042 Multi-pembayaran | Pass | Browser: DP BYR-021-1 Rp50.000 + pelunasan BYR-021-2 Rp25.000 (default = sisa). Unit test nominal melebihi sisa ditolak. |
+| AC-043 Dibayar vs dikonfirmasi | Pass | Browser: "Dibayar Rp75.000 dari Rp75.000" + "Dana dikonfirmasi Rp50.000 dari Rp75.000" dan peringatan LUNAS belum dipastikan. Unit test tunai langsung terhitung. |
+| AC-044 Pemeriksaan per entri | Pass | Browser: PRM-021 (BYR-021-1) lalu PRM-021-B (BYR-021-2). Unit test entri baru kembali *Belum diminta*. |
+| AC-045 Gerbang Diproses | Pass | Browser: tombol nonaktif "Minta pemeriksaan terlebih dahulu…" lalu aktif setelah HAS-021 (DP). Unit test tanpa pembayaran/menunggu ditolak. |
+| AC-046 Gerbang Selesai | Pass | Browser: di QC "Dana dikonfirmasi belum sama dengan tagihan…", setelah HAS-021-B → Selesai. Unit test. |
+| AC-047 Batalkan entri | Pass | Browser: BYR-015-1 dibatalkan → Dibayar Rp0, gerbang "Belum ada pembayaran tercatat". Unit test menunggu/dikonfirmasi ditolak. |
+| AC-048 Notifikasi peran | Pass | Browser: Owner melihat "Permintaan pemeriksaan INV-…-021"; Admin melihat "Hasil pemeriksaan masuk INV-…-021"; ketuk membuka detail. Unit test notices. |
+| AC-049 Visual Fleffy | Pass | Visual: tombol biru pil, tombol + di baris bottom nav (Admin). |
+| AC-018/019 (dibaca ulang v1.1) | Pass | Teruskan = Antrian → Diproses dengan dasar HAS-ID di riwayat. |
+| AC-020 Tahan | Pass | Browser: INV-…-018 Tahan dengan alasan terisi otomatis "Hasil belum memadai…", banner tersimpan. |
+| AC-008 (dibaca ulang v1.1) | Pass | Unit test: ubah tagihan tidak membatalkan konfirmasi; tagihan < dibayar ditolak. |
+| AC-024 Kembali dari antrean | Pass | Browser: antrean `?f=hasil_tersedia` → detail (Pemeriksaan terbuka) → ‹ Kembali → filter sama. |
+| AC-007 Pencarian kosong | Pass | Browser: "INV-999" → "Transaksi tidak ditemukan". |
+| AC-035 Responsive | Pass | 320 px tanpa overflow; 1280 px kolom 560 px. |
+| AC-017 Gagal simpan | Not Tested | Belum disimulasikan (sama dengan v0.1.0). |
+
+Kriteria v1.0 lain yang tidak berubah perilakunya (validasi, akses peran, accordion, token, empty state) ikut diverifikasi lewat unit test dan alur browser di atas.

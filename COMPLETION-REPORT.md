@@ -20,3 +20,12 @@ Lihat [TEST-REPORT.md](TEST-REPORT.md). Seluruh kriteria **Must Have** lulus. AC
 1. Uji AC-017 dengan mensimulasikan penyimpanan penuh.
 2. Pisahkan bagian N1b ke `components/orders/sections/`.
 3. Usability test dengan admin kasir (Worksheet 13).
+
+---
+
+## v0.2.0 — Iterasi setelah eksperimen
+- **Diselaraskan dengan Fleffy asli**: nota INV, pelanggan K-n, multi-pembayaran, status pengerjaan, tombol + di bottom nav, aksen biru.
+- **Inti riset diperkuat**: LUNAS (tercatat) dipisahkan dari "Dana dikonfirmasi". Gerbang Diproses dan Selesai bergantung pada dana yang dipastikan.
+- **AC v1.1**: AC-041 s.d. AC-049 Pass. AC-017 tetap Not Tested.
+- **Known issues**: bukti masih berupa data teks; peran masih disimulasikan; satu permintaan mencakup beberapa entri (D-14), sehingga hasil tidak bisa membedakan entri yang cocok dan tidak cocok dalam permintaan yang sama.
+- **Next steps**: usability test (Worksheet 13) dengan kasir dan owner memakai skenario DP + pelunasan.

@@ -1,6 +1,8 @@
 > **Eksperimen B — PRD + UX Skill** · Aplikasi dibangun AI coding agent dari PRD di bawah **ditambah** dokumen UX Skill: [UX-SPEC.md](UX-SPEC.md), [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md), [INTERACTION-SPEC.md](INTERACTION-SPEC.md), [ACCEPTANCE-CRITERIA.md](ACCEPTANCE-CRITERIA.md), dan instruksi agent [AGENTS.md](AGENTS.md).
 > Aplikasi: [`apps/web`](apps/web) · Demo: https://rusdany33.github.io/fleffy-prd-ux-skill/ · Riwayat perubahan: [CHANGELOG.md](CHANGELOG.md) · Perbandingan A vs B: [EVALUASI.md](EVALUASI.md)
 >
+> **v0.2.0** (setelah eksperimen): prototipe diselaraskan dengan aplikasi Fleffy asli — nota INV, multi-pembayaran, status pengerjaan, dan pemisahan LUNAS tercatat vs dana dikonfirmasi. Lihat UX-SPEC §7 dan CHANGELOG.
+>
 > Menjalankan lokal: `cd apps/web && npm install && npm run dev` · Test: `npm test`
 
 # PRD — Fleffy: Pemeriksaan Pembayaran Transfer

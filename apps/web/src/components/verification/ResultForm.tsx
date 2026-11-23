@@ -1,20 +1,33 @@
 import { useState } from 'react'
-import type { Checklist, Conclusion, Order, VerificationRequest } from '../../domain/types'
+import type { Checklist, Conclusion, Transaction, VerificationRequest } from '../../domain/types'
 import { checklistComplete } from '../../domain/rules'
 import { recordResult } from '../../domain/actions'
 import { useStore } from '../../store/StoreContext'
-import { CONCLUSION_LABEL, dateTime, rupiah } from '../../utils/format'
+import { CONCLUSION_LABEL, METHOD_LABEL, dateTime, rupiah } from '../../utils/format'
 import { Button, Field, InfoBox, fieldAria } from '../common'
 
+export const requestTotal = (r: VerificationRequest) => r.entries.reduce((a, e) => a + e.amount, 0)
+
+// eslint-disable-next-line react-refresh/only-export-components
 export const CHECK_ITEMS: { key: keyof Checklist; label: (r: VerificationRequest) => string }[] = [
-  { key: 'identity', label: () => 'Identitas pesanan dan bukti sesuai' },
-  { key: 'amount', label: (r) => `Nominal sesuai: ${rupiah(r.snapshot.amount)}` },
+  { key: 'identity', label: () => 'Identitas transaksi dan bukti sesuai' },
+  { key: 'amount', label: (r) => `Nominal sesuai: ${rupiah(requestTotal(r))}${r.entries.length > 1 ? ` (${r.entries.length} entri)` : ''}` },
   { key: 'time', label: () => 'Waktu transfer cocok dengan data bukti' },
   { key: 'received', label: () => 'Dana diterima menurut mutasi rekening' },
 ]
 
-/** INTERACTION-SPEC §5 — hanya peran Owner/Finance. */
-export function ResultForm({ o, r }: { o: Order; r: VerificationRequest }) {
+export function EntryList({ r }: { r: VerificationRequest }) {
+  return (
+    <ul className="checklist">
+      {r.entries.map((e) => (
+        <li key={e.id}><span aria-hidden>•</span><span>{e.id} · {METHOD_LABEL[e.method]} <span className="num">{rupiah(e.amount)}</span>{e.sender && <> · {e.sender}</>}{e.transferAt && <> · {dateTime(e.transferAt)}</>}</span></li>
+      ))}
+    </ul>
+  )
+}
+
+/** INTERACTION-SPEC §5 / §11.3 — hanya peran Owner/Finance. */
+export function ResultForm({ t, r }: { t: Transaction; r: VerificationRequest }) {
   const { commit, toast } = useStore()
   const [check, setCheck] = useState<Checklist>({ identity: false, amount: false, time: false, received: false })
   const [conclusion, setConclusion] = useState<Conclusion | null>(null)
@@ -27,7 +40,7 @@ export function ResultForm({ o, r }: { o: Order; r: VerificationRequest }) {
   const save = () => {
     if (!conc) { setError('Pilih kesimpulan pemeriksaan.'); return }
     setBusy(true)
-    const res = commit((s) => recordResult(s, o.id, conc, check, note))
+    const res = commit((s) => recordResult(s, t.id, conc, check, note))
     setBusy(false)
     if (res.ok) { toast('success', `Hasil ${r.id.replace('PRM', 'HAS')} tersimpan.`); return }
     setError(res.kind === 'storage' ? 'Hasil belum tersimpan. Periksa penyimpanan perangkat dan coba kembali.' : res.message)
@@ -35,10 +48,9 @@ export function ResultForm({ o, r }: { o: Order; r: VerificationRequest }) {
 
   return (
     <div className="stack">
-      <InfoBox title="Catat hasil pemeriksaan">
-        {r.id} · {r.snapshot.orderCode} · <span className="num">{rupiah(r.snapshot.amount)}</span>
-        {r.snapshot.proofId && <> · {r.snapshot.proofId}{o.proof && <> ({o.proof.sender}, {dateTime(o.proof.transferAt)})</>}</>}
-      </InfoBox>
+      <InfoBox title={`Catat hasil pemeriksaan ${r.id}`}>{t.invoice} · {r.customer}</InfoBox>
+      <p className="label">Entri yang diperiksa</p>
+      <EntryList r={r} />
       <fieldset className="stack-8 plain-fieldset">
         <legend className="label">Butir pemeriksaan</legend>
         {CHECK_ITEMS.map((c) => (

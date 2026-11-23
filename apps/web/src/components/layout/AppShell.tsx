@@ -7,7 +7,7 @@ import { BottomSheet, Button } from '../common'
 
 const NAV = [
   { key: 'beranda', href: '#/', label: 'Beranda', ico: '⌂' },
-  { key: 'pesanan', href: '#/pesanan', label: 'Pesanan', ico: '☰' },
+  { key: 'transaksi', href: '#/transaksi', label: 'Transaksi', ico: '☰' },
   { key: 'pemeriksaan', href: '#/pemeriksaan', label: 'Pemeriksaan', ico: '✓' },
   { key: 'bantuan', href: '#/bantuan', label: 'Bantuan', ico: '?' },
 ] as const
@@ -39,12 +39,14 @@ export function AppShell({ nav, header, children }: { nav: NavKey; header: Heade
       </header>
       {!storageOk && <div className="global-banner" role="alert">Penyimpanan perangkat tidak tersedia. Perubahan tidak akan tersimpan.</div>}
       <main className="main">{children}</main>
-      <nav className="bottom-nav" aria-label="Navigasi utama">
+      {/* FAB "+" di dalam baris navigasi seperti aplikasi Fleffy (DESIGN-SYSTEM §8) */}
+      <nav className={`bottom-nav${state.role === 'admin' ? ' has-fab' : ''}`} aria-label="Navigasi utama">
         {NAV.map((n) => (
           <a key={n.key} href={n.href} aria-current={nav === n.key ? 'page' : undefined}>
             <span className="ico" aria-hidden>{n.ico}</span>{n.label}
           </a>
         ))}
+        {state.role === 'admin' && <a className="fab" href="#/transaksi/baru" aria-label="Buat transaksi"><span aria-hidden>+</span></a>}
       </nav>
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => <div key={t.id} className={`toast toast-${t.tone}`}>{t.text}</div>)}
