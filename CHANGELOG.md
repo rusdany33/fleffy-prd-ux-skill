@@ -10,6 +10,11 @@ Semua perubahan pada repositori ini dicatat di sini. Format mengikuti [Keep a Ch
 
 ---
 
+## [0.1.1] — 2026-11-23
+
+### Dokumentasi
+- Menambahkan `EVALUASI.md`: perbandingan Eksperimen A (PRD Only) dan B (PRD + UX Skill) pada enam parameter slide (kelengkapan fitur, kesesuaian UX, konsistensi desain, keberhasilan pengujian, jumlah revisi, waktu pengembangan), penilaian A terhadap AC-001–AC-040, serta keterbatasan eksperimen. Tidak ada perubahan pada aplikasi.
+
 ## [0.1.0] — 2026-11-23
 
 ### Dokumentasi (commit pertama)
