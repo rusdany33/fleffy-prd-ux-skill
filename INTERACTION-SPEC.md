@@ -1,6 +1,6 @@
 # INTERACTION-SPEC — Fleffy: Pemeriksaan Pembayaran Transfer
 
-**Versi:** 1.0 · **Status:** Final untuk Eksperimen B
+**Versi:** 1.1 · **Status:** Final untuk Eksperimen B
 **Rujukan:** README.md (PRD) · UX-SPEC.md · DESIGN-SYSTEM.md · Worksheet 10 (User Flow) · Worksheet 12 (prototype route check)
 
 ---
@@ -150,4 +150,28 @@ Sukses → banner warning "Keputusan tahan tersimpan — PSN-xxx menunggu klarif
 ## 10. Interaction Completion Rules
 Interaksi selesai bila: aksi diproses, data tersimpan, tampilan mencerminkan kondisi terbaru di semua halaman, pengguna menerima umpan balik, tidak ada duplikasi, dan kegagalan dapat dipahami serta dipulihkan.
 
-*End of INTERACTION-SPEC v1.0*
+## 11. Perubahan v1.1
+
+### 11.1 Buat Transaksi
+Field: Nama pelanggan*, HP, Layanan*, Jumlah pasang*, Tagihan*, Catatan, lalu **Pembayaran awal** (opsional): Metode (Cash/Bank Transfer/E-Wallet), Nominal (1 sampai tagihan), dan untuk non-tunai: pengirim*, waktu transfer*, keterangan. Nominal melebihi sisa tagihan ditolak ("Nominal melebihi sisa tagihan"). Setelah simpan: toast "Transaksi INV-… tersimpan." lalu detail terbuka.
+
+### 11.2 Tambah dan batalkan pembayaran
+Di bagian Pembayaran (Admin), *Tambah pembayaran* membuka bottom sheet dengan field yang sama dengan Pembayaran awal; nominal default = sisa tagihan. Simpan → toast "Pembayaran BYR-… tercatat." Entri non-tunai baru berstatus *Belum diminta* dengan teks "Pembayaran tercatat belum memastikan dana masuk."
+*Batalkan entri* hanya untuk entri tunai atau *Belum diminta*: konfirmasi di bottom sheet, lalu entri dikeluarkan dari perhitungan dan dicatat di riwayat.
+
+### 11.3 Minta pemeriksaan (pengganti §4.2)
+Tombol tersedia bila ada entri non-tunai *Belum diminta*, *Perlu klarifikasi*, atau *Tidak sesuai*, dan tidak ada permintaan yang menunggu. Sebelum kirim, tampil ringkasan "Entri yang diperiksa: BYR-015-1 Bank Transfer Rp50.000 …". Checklist hasil: identitas & bukti sesuai · nominal sesuai total entri · waktu transfer cocok · dana diterima.
+
+### 11.4 Status pengerjaan (pengganti §6)
+- Tahap saat ini tampil sebagai chip. Tombol utama = tahap berikutnya: "Teruskan ke teknisi" (Antrian → Diproses), "Lanjut ke Finishing", "Lanjut ke Quality Control", "Tandai Selesai".
+- Gerbang Antrian → Diproses dan QC → Selesai mengikuti UX-SPEC §7.4: tombol nonaktif dengan alasan, dan logika ikut menolak.
+- *Tahan untuk klarifikasi* (bottom sheet alasan) tersedia selama status Antrian.
+- Sukses: banner "Status diperbarui — INV… kini Diproses. Pesanan siap dikerjakan teknisi."
+
+### 11.5 Notifikasi
+Beranda menampilkan maksimal 5 notifikasi terbaru sesuai peran. Mengetuk notifikasi membuka detail transaksi dengan bagian Pemeriksaan terbuka.
+
+### 11.6 Perubahan data
+Mengubah tagihan atau data pelanggan **tidak** membatalkan entri yang sudah dikonfirmasi, karena uang yang diterima tidak berubah. Status LUNAS dan "dana dikonfirmasi X dari Y" dihitung ulang. Mekanisme kedaluwarsa hasil (P05) diganti dengan aturan bahwa entri yang sudah diperiksa tidak dapat diubah.
+
+*End of INTERACTION-SPEC v1.1*

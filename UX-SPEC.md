@@ -1,6 +1,6 @@
 # UX-SPEC — Fleffy: Pemeriksaan Pembayaran Transfer
 
-**Versi:** 1.0 · **Status:** Final untuk Eksperimen B · **Tanggal:** 23 November 2026
+**Versi:** 1.1 · **Status:** Final untuk Eksperimen B · **Tanggal:** 23 November 2026
 **Rujukan:** README.md (PRD v1.0) · DESIGN-SYSTEM.md · INTERACTION-SPEC.md · ACCEPTANCE-CRITERIA.md
 **Sumber riset:** Worksheet 6 (Persona), 7 (Journey), 8 (UX Requirements), 9 (Information Architecture), 10 (User Flow), 11 (Crazy 8, konsep terpilih), 12 (Wireframe & Prototype) di [rusdany33/rekayasa-interaksi](https://github.com/rusdany33/rekayasa-interaksi).
 
@@ -219,4 +219,41 @@ Kotak "Catatan ditemukan — Keputusan untuk PSN-015 sudah tersimpan." Kartu PSN
 - Perubahan nominal/pelanggan/bukti setelah permintaan → peringatan di form sebelum simpan, lalu hasil lama ditandai kedaluwarsa.
 - Kembali dari form dengan perubahan belum disimpan → konfirmasi "Buang perubahan?".
 
-*End of UX-SPEC v1.0*
+## 7. Perubahan v1.1 — Penyelarasan dengan Aplikasi Fleffy Asli
+
+**Dasar:** analisis dua rekaman layar aplikasi Fleffy (`ScreenRecording_11-22-2026`, 384×848) dan halaman Google Play `com.fleffy.mobile`. Di aplikasi asli, kasir mengisi nominal Bank Transfer pada *Buat Transaksi*, lalu aplikasi langsung menampilkan **"Lunas"** dan **"Pembayaran diterima"** tanpa pemeriksaan. Bagian ini **menggantikan** ketentuan v1.0 yang bertentangan.
+
+### 7.1 Terminologi & identitas
+| v1.0 | v1.1 (mengikuti Fleffy) |
+|---|---|
+| Pesanan, `PSN-015` | **Transaksi**, nota **`INV-YYMMDD-NNN`** (mis. INV-261123-015) |
+| Nama pelanggan | **Kode · nama · HP** (mis. "K-15 · Pelanggan A") |
+| Bukti `BKT-015` (satu per pesanan) | **Entri pembayaran `BYR-015-1`, `BYR-015-2`, …** (bukti melekat pada entri non-tunai) |
+| Menu "Pesanan" | Menu **"Transaksi"** |
+| Keputusan Teruskan/Tahan | **Status pengerjaan** Antrian → Diproses → Finishing → Quality Control → Selesai; "Teruskan ke teknisi" = Antrian → Diproses |
+
+### 7.2 Model pembayaran
+- Satu transaksi dapat memiliki **beberapa entri pembayaran** (DP lalu pelunasan). Setiap entri punya metode **Cash / Bank Transfer / E-Wallet**, nominal, dan waktu. Entri non-tunai memuat bukti: pengirim, waktu transfer, keterangan.
+- **Status bayar tercatat:** chip **BELUM LUNAS** / **LUNAS** dan progress **"Dibayar Rp X dari Rp Y"** (jumlah semua entri dibanding tagihan), sama seperti Fleffy.
+- **Status dana:** **"Dana dikonfirmasi Rp Z dari Rp Y"** = entri tunai + entri non-tunai yang tercakup hasil pemeriksaan memadai. Ditampilkan berdampingan dengan status bayar tercatat (UX01).
+- Status per entri: *Tunai* · *Belum diminta* · *Menunggu hasil* · *Dikonfirmasi* · *Perlu klarifikasi* · *Tidak sesuai*.
+- Entri hanya dapat **dibatalkan** bila tunai atau belum pernah masuk permintaan pemeriksaan. Entri yang sudah diminta atau diperiksa tidak dapat diubah.
+
+### 7.3 Pemeriksaan per entri
+- *Minta pemeriksaan* membuat satu permintaan `PRM-NNN[-B]` yang mencakup **semua entri non-tunai yang belum dikonfirmasi dan tidak sedang menunggu**. Snapshot permintaan memuat daftar entri (ID, metode, nominal, bukti).
+- Hasil `HAS-NNN[-B]` berlaku untuk semua entri dalam permintaan itu. Kesimpulan *Sesuai* (4 butir cocok) membuat entri menjadi **Dikonfirmasi**.
+- Keadaan pemeriksaan transaksi (urut prioritas): **Belum diminta** (ada entri non-tunai yang perlu diminta) → **Menunggu hasil** → **Hasil tersedia** (semua entri non-tunai sudah punya hasil). Transaksi tanpa entri non-tunai berstatus *Tidak perlu pemeriksaan*.
+
+### 7.4 Gerbang status pengerjaan
+- **Antrian → Diproses ("Teruskan ke teknisi")** hanya bila ada minimal satu entri pembayaran **dan** semua entri non-tunai sudah **Dikonfirmasi**. DP yang sudah dikonfirmasi sudah cukup. Selain itu tombol nonaktif dengan alasan, dan tersedia *Tahan untuk klarifikasi*.
+- **Quality Control → Selesai** hanya bila **dana dikonfirmasi = tagihan** (lunas dan seluruh dana dipastikan), agar sepatu tidak diserahkan sebelum pembayaran pasti.
+- Tahap lain maju satu per satu oleh Admin.
+
+### 7.5 Halaman yang berubah
+- **N1 Transaksi:** kartu menampilkan `INV`, kode pelanggan, tagihan, chip LUNAS/BELUM LUNAS, chip pemeriksaan, dan chip status pengerjaan.
+- **N1a Buat Transaksi:** pelanggan (nama, HP; kode dibuat otomatis), layanan, tagihan, lalu bagian **Pembayaran awal** opsional (metode, nominal, dan bukti untuk non-tunai), seperti layar *Buat Transaksi* Fleffy.
+- **N1b Detail Transaksi:** kepala `INV · K-kode Nama · Rp tagihan` dan chip status pengerjaan. Accordion: Ringkasan · **Pembayaran** (progress dibayar, dana dikonfirmasi, daftar entri dengan status per entri, *Tambah pembayaran*, *Batalkan entri*) · Pemeriksaan · **Status pengerjaan** (pengganti "Tindak lanjut": tahap saat ini, tombol tahap berikutnya dengan gerbang, Tahan).
+- **N0 Beranda:** kartu **Notifikasi**. Owner/Finance melihat "Permintaan pemeriksaan INV… · Bank Transfer Rp…" (meniru push "Transaksi Baru!"). Admin melihat "Hasil pemeriksaan masuk INV…".
+- **Tombol + mengambang** (Admin) di atas bottom nav untuk *Buat Transaksi*, seperti Fleffy.
+
+*End of UX-SPEC v1.1*

@@ -1,7 +1,7 @@
 # AGENTS.md — AI Coding Agent Instructions
 
 **Project:** Fleffy — Pemeriksaan Pembayaran Transfer
-**Version:** 1.0 · **Purpose:** Instruksi kerja untuk AI coding agent yang membangun `apps/web` (Eksperimen B: PRD + UX Skill).
+**Version:** 1.1 · **Purpose:** Instruksi kerja untuk AI coding agent yang membangun `apps/web` (Eksperimen B: PRD + UX Skill).
 
 ---
 
@@ -98,6 +98,9 @@ Catat keputusan teknis dan interpretasi di `DECISIONS.md` (ID D-01, D-02, …) b
 
 ## 13. Completion Report
 Akhiri dengan `COMPLETION-REPORT.md`: ringkasan implementasi, status AC (Pass/Fail/Not Tested), known issues, next steps. Catat setiap iterasi di `CHANGELOG.md`.
+
+## 13a. Perubahan v1.1
+Ikuti bagian "Perubahan v1.1" di UX-SPEC §7, DESIGN-SYSTEM §8, INTERACTION-SPEC §11, dan ACCEPTANCE-CRITERIA §12. Bagian itu menggantikan ketentuan v1.0 yang bertentangan (identitas INV, entri pembayaran, status pengerjaan, visual biru Fleffy). Catat iterasi ini sebagai v0.2.0 di CHANGELOG.
 
 ## 14. Final Instruction
 Urutan prioritas: kebenaran fungsi → kebutuhan pengguna → kesesuaian UX & interaksi → konsistensi desain → kualitas kode → kinerja & keamanan → kemudahan pemeliharaan.

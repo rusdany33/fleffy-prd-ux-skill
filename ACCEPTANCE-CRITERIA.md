@@ -1,6 +1,6 @@
 # ACCEPTANCE-CRITERIA — Fleffy: Pemeriksaan Pembayaran Transfer
 
-**Versi:** 1.0 · **Status:** Final untuk Eksperimen B
+**Versi:** 1.1 · **Status:** Final untuk Eksperimen B
 **Rujukan:** README.md (PRD v1.0) · UX-SPEC.md · DESIGN-SYSTEM.md · INTERACTION-SPEC.md
 
 ---
@@ -149,4 +149,18 @@ Rilis v1.0 diterima bila seluruh **Must** Pass, tidak ada bug kritis, data persi
 ## 11. Test Execution Report
 Hasil dicatat di `TEST-REPORT.md` dengan kolom: Criteria ID · Status · Evidence · Bug Ref · Notes.
 
-*End of ACCEPTANCE-CRITERIA v1.0*
+## 12. Kriteria Tambahan v1.1
+
+**AC-041 Terminologi Fleffy** · Must · Visual — Transaksi bernomor `INV-YYMMDD-NNN`, pelanggan berkode `K-n`, menu "Transaksi", chip LUNAS/BELUM LUNAS.
+**AC-042 Multi-pembayaran** · Must · Automated, Manual — Satu transaksi dapat memiliki beberapa entri (Cash/Bank Transfer/E-Wallet) ber-ID `BYR-NNN-k`; nominal yang melebihi sisa tagihan ditolak.
+**AC-043 Dibayar vs dikonfirmasi** · Must · Automated, Manual — Detail menampilkan "Dibayar X dari Y" dan "Dana dikonfirmasi Z dari Y"; tunai langsung terhitung, non-tunai hanya setelah hasil memadai.
+**AC-044 Pemeriksaan per entri** · Must · Automated — Permintaan mencakup semua entri non-tunai yang belum dikonfirmasi; hasil Sesuai mengonfirmasi tepat entri tersebut; entri baru setelahnya kembali *Belum diminta*.
+**AC-045 Gerbang Diproses** · Must · Automated, Manual — Antrian → Diproses ditolak bila ada entri non-tunai belum dikonfirmasi atau belum ada pembayaran; diizinkan untuk DP yang sudah dikonfirmasi.
+**AC-046 Gerbang Selesai** · Must · Automated — QC → Selesai ditolak bila dana dikonfirmasi < tagihan.
+**AC-047 Batalkan entri** · Should · Automated — Hanya entri tunai/belum diminta yang dapat dibatalkan; entri yang sudah diminta/diperiksa ditolak.
+**AC-048 Notifikasi peran** · Should · Manual — Owner/Finance melihat notifikasi permintaan yang ditujukan kepadanya; Admin melihat hasil yang masuk; ketuk membuka detail.
+**AC-049 Visual Fleffy** · Should · Visual — Tombol utama biru berbentuk pil, FAB "+" untuk Admin.
+
+Pada v1.1, AC-008 (invalidasi) dibaca sesuai INTERACTION-SPEC §11.6; AC-019/AC-020 dibaca sebagai "Teruskan" = Antrian → Diproses, dengan Tahan tetap memakai alasan terstruktur.
+
+*End of ACCEPTANCE-CRITERIA v1.1*

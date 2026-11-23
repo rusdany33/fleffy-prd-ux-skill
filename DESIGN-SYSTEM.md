@@ -1,6 +1,6 @@
 # DESIGN-SYSTEM — Fleffy
 
-**Versi:** 1.0 · **Status:** Final untuk Eksperimen B
+**Versi:** 1.1 · **Status:** Final untuk Eksperimen B
 **Rujukan:** UX-SPEC.md · Worksheet 12 (komponen wireframe `WF/*`, variabel *Fleffy / Wireframe*) · tampilan aplikasi Fleffy saat ini (Worksheet 1: antarmuka gelap, minimal, layar ±384 px).
 
 ---
@@ -164,4 +164,14 @@ Durasi 150 ms (`ease-out`) untuk buka/tutup accordion dan bottom sheet. Hormati 
 - **Bahasa:** `lang="id"`.
 - **Gerak:** tanpa animasi jika `prefers-reduced-motion: reduce`.
 
-*End of DESIGN-SYSTEM v1.0*
+## 8. Perubahan v1.1 — Visual Fleffy
+
+- **Aksen biru Fleffy** untuk aksi utama: `--blue-500: #2B74E4`, `--blue-600: #1F5FC4`. `--color-action` = blue-500, `--color-action-text` = putih, hover blue-600. (v1.0 memakai tombol putih.)
+- **Tombol utama dan sekunder berbentuk pil** (`--radius-full`), tinggi tetap 48 px.
+- **FAB "+"**: lingkaran 56 px, latar action, ikon "+" 28 px, di kanan bawah 16 px di atas bottom nav, `aria-label="Buat transaksi"`. Hanya untuk Admin.
+- **Chip status bayar** mengikuti Fleffy: **LUNAS** (success) dan **BELUM LUNAS** (warning), huruf kapital.
+- **Chip status pengerjaan**: Antrian (neutral), Diproses / Finishing / Quality Control (info), Selesai (success).
+- **Progress bar pembayaran**: tinggi 6 px, radius penuh, latar soft. Isi warning untuk yang baru tercatat, ditumpuk isi success untuk dana dikonfirmasi.
+- **Kartu notifikasi**: InfoBox info dengan judul tebal dan baris per notifikasi yang dapat diketuk.
+
+*End of DESIGN-SYSTEM v1.1*
