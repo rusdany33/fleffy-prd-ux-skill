@@ -1,0 +1,58 @@
+/* DESIGN-SYSTEM.md §2–§5 — satu-satunya sumber nilai visual */
+:root {
+  /* primitive */
+  --gray-950: #0E1013; --gray-900: #16191E; --gray-850: #1C2026; --gray-800: #252A31; --gray-700: #343A43;
+  --gray-500: #6B7380; --gray-400: #9AA3AF; --gray-100: #EEF0F3;
+  --blue-400: #7FB0FF; --blue-950: #14233D;
+  --amber-400: #F2C46D; --amber-950: #33270F;
+  --green-400: #6FD39A; --green-950: #10291C;
+  --red-400: #FF8A80; --red-950: #3A1514;
+
+  /* semantic */
+  --color-bg: var(--gray-950);
+  --color-surface: var(--gray-900);
+  --color-surface-2: var(--gray-850);
+  --color-soft: var(--gray-800);
+  --color-border: var(--gray-700);
+  --color-text: var(--gray-100);
+  --color-text-secondary: var(--gray-400);
+  --color-text-disabled: var(--gray-500);
+  --color-action: var(--gray-100);
+  --color-action-text: var(--gray-950);
+  --color-focus: var(--blue-400);
+  --color-info: var(--blue-400); --color-info-bg: var(--blue-950);
+  --color-warning: var(--amber-400); --color-warning-bg: var(--amber-950);
+  --color-success: var(--green-400); --color-success-bg: var(--green-950);
+  --color-danger: var(--red-400); --color-danger-bg: var(--red-950);
+
+  /* typography */
+  --font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --text-display: 700 28px/34px var(--font-family);
+  --text-title: 700 20px/26px var(--font-family);
+  --text-heading: 700 16px/22px var(--font-family);
+  --text-body: 400 14px/20px var(--font-family);
+  --text-label: 500 14px/20px var(--font-family);
+  --text-caption: 400 12px/16px var(--font-family);
+
+  /* spacing & radius */
+  --space-4: 4px; --space-8: 8px; --space-12: 12px; --space-16: 16px; --space-24: 24px; --space-32: 32px;
+  --radius-6: 6px; --radius-12: 12px; --radius-16: 16px; --radius-full: 999px;
+
+  /* layout */
+  --header-h: 56px;
+  --nav-h: 64px;
+  --content-max: 560px;
+  --control-h: 48px;
+  --control-h-sm: 36px;
+
+  /* elevation & motion */
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, .45);
+  --scrim: rgba(0, 0, 0, .6);
+  --motion: 150ms ease-out;
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion: 0ms linear; }
+}
